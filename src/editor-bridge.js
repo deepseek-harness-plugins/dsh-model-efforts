@@ -38,7 +38,7 @@ export function rowBridge(element) {
 }
 
 export function observeModelRows(scope, render) {
-  const mounted = new Map(), originals = new WeakMap();
+  const mounted = new Map(), originals = new WeakMap(), initialized = new WeakMap();
   const editIds = new WeakMap(), pendingMatches = new Map();
   let frame = 0, serial = 0, last = '';
   const refresh = () => {if (!frame) frame = requestAnimationFrame(scan);};
@@ -55,6 +55,11 @@ export function observeModelRows(scope, render) {
     if (previous === undefined || previous === bridge.model.id) return;
     const matched = matchModel(bridge.model.id, bridge.provider);
     if (!matched) return;
+    const editor = element.closest('[class*="_modelList"]');
+    if (editor) {
+      if (!initialized.has(editor)) initialized.set(editor, new Set());
+      initialized.get(editor).add(JSON.stringify([bridge.model.id, bridge.provider]));
+    }
     bridge.onChange(applyFields(bridge.model, autoFields(matched, bridge.provider.api)));
     refresh();
   };
@@ -76,12 +81,24 @@ export function observeModelRows(scope, render) {
   const scan = () => {
     frame = 0;
     const rows = [], live = new Set();
+    let initialMatch;
     for (const element of scope.querySelectorAll('[class*="_modelEntry"]')) {
       const bridge = rowBridge(element);
       if (!bridge) continue;
       const editor = element.closest('[class*="_modelList"]');
       if (!editor) continue;
       if (!originals.has(editor)) originals.set(editor, new Map(bridge.savedModels.map(m => [m.id, fields(m)])));
+      if (!initialized.has(editor)) initialized.set(editor, new Set());
+      const seen = initialized.get(editor), identity = JSON.stringify([bridge.model.id, bridge.provider]);
+      if (!initialMatch && !seen.has(identity) && !bridge.disabled && !pendingMatches.has(element)
+        && document.activeElement !== element.querySelector('input')) {
+        // Initialize existing, unconfigured models once per editor. Keep this
+        // separate from ID edits so Reset and delete-all stay as the user chose.
+        seen.add(identity);
+        const matched = bridge.model.reasoningEfforts === undefined && bridge.model.defaultReasoningEffort === undefined
+          && matchModel(bridge.model.id, bridge.provider);
+        if (matched) initialMatch = {bridge, draft: autoFields(matched, bridge.provider.api)};
+      }
       const advanced = element.querySelector('[class*="_modelAdvanced"]');
       if (!advanced) continue;
       let seat = mounted.get(element);
@@ -97,6 +114,13 @@ export function observeModelRows(scope, render) {
     for (const [element, seat] of mounted) if (!live.has(element)) {mounted.delete(element); seat.mount.remove();}
     const signature = JSON.stringify(rows.map(({key, id, fields, provider, baseline, disabled}) => ({key, id, fields, provider, baseline, disabled})));
     if (signature !== last) {last = signature; render(rows);}
+    // One native update per committed frame: row callbacks otherwise share an
+    // old provider draft and a later update can discard the previous row's match.
+    if (initialMatch) {
+      const {bridge, draft} = initialMatch;
+      bridge.onChange(applyFields(bridge.model, draft));
+      refresh();
+    }
   };
   const observer = new MutationObserver(refresh);
   observer.observe(scope, {subtree: true, childList: true, attributes: true, attributeFilter: ['disabled']});

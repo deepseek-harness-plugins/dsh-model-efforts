@@ -33,7 +33,7 @@ await writeFile(join(profile, 'cordis.yml'), '[]');
 await writeFile(join(profile, 'cordis.patch.yml'), JSON.stringify([
   {id: 'ui-settings-general', config: {welcomeNoticeVersion: '2026-09-28.1'}},
   {id: 'session-title-llm', disabled: true},
-  {id: 'llm-pi-ai', config: {providers: {'effort-fixture': {displayName: '模型思考档位', api: 'anthropic-messages', baseURL: mockURL, apiKeyEnv: 'DME_TEST_API_KEY', models: [{id: 'claude-opus-5-5', name: 'claude-opus-5-5', contextWindow: 256000, maxTokens: 32000}, {id: 'claude-sonnet-4-6', name: 'claude-sonnet-4-6'}, {id: 'custom-model', name: 'custom-model'}]}}}}
+  {id: 'llm-pi-ai', config: {providers: {'effort-fixture': {displayName: '模型思考档位', api: 'anthropic-messages', baseURL: mockURL, apiKeyEnv: 'DME_TEST_API_KEY', models: [{id: 'claude-opus-5-5', name: 'claude-opus-5-5', contextWindow: 256000, maxTokens: 32000}, {id: 'claude-sonnet-4-6', name: 'claude-sonnet-4-6'}, {id: 'custom-model', name: 'custom-model'}, {id: 'claude-haiku-5-5', name: 'claude-haiku-5-5'}]}}}}
 ]));
 const cli = process.env.DME_CLI ?? '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh';
 let log = '', browser, page;
@@ -101,20 +101,52 @@ try {
     await assertDefaultLabel(panel, level);
   };
   const configPath = join(profile, 'cordis.patch.yml');
+  const untouched = await readFile(configPath, 'utf8');
   await openEditor();
+  // Reproduce the reported existing Haiku row: no ID input or Match click.
+  let haiku = await expand(3);
+  await chips('claude-haiku-5-5', 6);
+  await assertDefaultLabel(haiku, 'high');
+  assert.equal(await haiku.getByRole('group', {name: 'off 档位', exact: true}).count(), 1);
+  assert.equal(await readFile(configPath, 'utf8'), untouched);
+  await haiku.getByRole('button', {name: '重置', exact: true}).click();
+  await chips('claude-haiku-5-5', 0);
+  await nativeRows.nth(3).getByRole('button', {name: /^模型选项/}).click();
+  haiku = await expand(3);
+  await page.waitForTimeout(550);
+  assert.equal(await haiku.locator('.dme-chip').count(), 0);
+  await page.getByRole('button', {name: '取消', exact: true}).click();
+  await page.locator('[class*="_editorRoute"]').waitFor({state: 'detached'});
+  assert.equal(await readFile(configPath, 'utf8'), untouched);
+  await openEditor();
+  haiku = await expand(3);
+  await chips('claude-haiku-5-5', 6);
+  // Explicitly removing every effort stays empty when folded and reopened.
+  for (const level of ['off', 'low', 'medium', 'high', 'xhigh', 'max']) {
+    await haiku.getByRole('button', {name: '删除 ' + level + ' 档位'}).click();
+  }
+  await chips('claude-haiku-5-5', 0);
+  await save();
+  await openEditor();
+  haiku = await expand(3);
+  assert.equal(await haiku.locator('.dme-chip').count(), 0);
+  await page.waitForTimeout(550);
+  assert.equal(await haiku.locator('.dme-chip').count(), 0);
+  // Other collapsed rows must survive sequential automatic draft updates.
   let panel = await expand(0);
-  assert.equal(await panel.locator('.dme-chip').count(), 0);
-  // Effort-only edits must dirty the native draft without an unrelated field.
-  await panel.getByRole('button', {name: '自动匹配', exact: true}).click();
   await chips('claude-opus-5-5', 5);
   await assertDefaultLabel(panel, 'high');
+  const initialSonnet = await expand(1);
+  await chips('claude-sonnet-4-6', 5);
+  await assertDefaultLabel(initialSonnet, 'high');
+  await nativeRows.nth(3).getByRole('button', {name: /^删除模型/}).click();
   assert.equal(await panel.getByLabel('增加思考档位').locator('option[value="off"]').isDisabled(), true);
   await panel.getByRole('button', {name: '删除 xhigh 档位'}).click();
   await chips('claude-opus-5-5', 4);
   await panel.getByLabel('增加思考档位').selectOption('xhigh');
   await panel.getByRole('button', {name: '重置', exact: true}).click();
-  await chips('claude-opus-5-5', 0);
-  assert.equal(await panel.locator('.dme-set-default').count(), 0);
+  await chips('claude-opus-5-5', 5);
+  await assertDefaultLabel(panel, 'high');
   await panel.getByRole('button', {name: '自动匹配', exact: true}).click();
   await setDefault(panel, 'low');
   await nativeRows.nth(0).getByRole('button', {name: /^模型选项/}).click();
@@ -182,6 +214,14 @@ try {
   await chips('claude-sonnet-5-5', 5);
   assert.equal(await newId.evaluate(el => el === document.activeElement), true);
   assert.equal(await sonnet.getByRole('group', {name: 'off 档位', exact: true}).count(), 0);
+  await sonnet.getByRole('button', {name: '重置', exact: true}).click();
+  await chips('claude-sonnet-5-5', 0);
+  await nativeRows.nth(3).getByRole('button', {name: /^模型选项/}).click();
+  sonnet = await expand(3);
+  await page.waitForTimeout(550);
+  assert.equal(await sonnet.locator('.dme-chip').count(), 0);
+  await sonnet.getByRole('button', {name: '自动匹配', exact: true}).click();
+  await chips('claude-sonnet-5-5', 5);
   await sonnet.getByRole('button', {name: '删除 xhigh 档位'}).click();
   await setDefault(sonnet, 'low');
   await nativeRows.nth(3).getByRole('textbox').nth(1).fill('新模型');
@@ -322,7 +362,7 @@ try {
   await page.getByRole('menuitem', {name: /推理等级/}).click();
   assert.deepEqual(await page.getByRole('menuitemradio').allTextContents(), ['Default', 'Low', 'Medium', 'High', 'Xhigh', 'Max']);
   assert.equal(errors.length, 0, errors.join('\n'));
-  console.log('UI_TEST_PASSED', JSON.stringify({root, screenshots: artifacts, assertions: 'automatic matching while ID remains focused, complete IDs rather than prefixes, same-ID and model-name edits preserve customization, reset and fold preserve manual state, unknown ID does not match, immediate collapsed-row Save persists automatic efforts, pending match Cancel, manual match restores catalog, inline placement, native save/cancel/reset, per-model defaults, medium default request, explicit max override, Off overrides xhigh without leaking output_config, High re-enables adaptive thinking, Opus 5.5 excludes Off, plugin disable restores native Default, no page errors'}));
+  console.log('UI_TEST_PASSED', JSON.stringify({root, screenshots: artifacts, assertions: 'existing Haiku 5.5 auto-matches on editor open, multiple collapsed rows retain automatic matches on Save, initialization Cancel preserves file, explicit delete-all remains empty on reopen, initialization and typed-match Reset survive folding, automatic matching while ID remains focused, complete IDs rather than prefixes, same-ID and model-name edits preserve customization, unknown ID does not match, immediate collapsed-row Save persists automatic efforts, pending match Cancel, manual match restores catalog, inline placement, native save/cancel/reset, per-model defaults, medium default request, explicit max override, Off overrides xhigh without leaking output_config, High re-enables adaptive thinking, Opus 5.5 excludes Off, plugin disable restores native Default, no page errors'}));
 } catch (e) {
   console.error('PAGE_ERRORS', errors);
   if (page) console.error('INLINE_DIAGNOSTIC', await page.evaluate(() => {
