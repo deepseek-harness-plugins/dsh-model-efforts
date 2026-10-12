@@ -62,32 +62,47 @@ function EffortSlider({levels, effort, busy, onSelect, modelName, onModels}) {
   const [hoveredTick, setHoveredTick] = useState(null), [thumbHovered, setThumbHovered] = useState(false);
   const thumb = useRef(null);
   useThumbSpring(thumb, thumbHovered || isDragging);
-  const dragging = useRef(false), draft = useRef(index);
-  useEffect(() => {if (!dragging.current) {setIndex(Math.max(0, hostIndex)); draft.current = Math.max(0, hostIndex);}}, [hostIndex, busy]);
+  const dragging = useRef(false), draft = useRef(index), committed = useRef(null);
+  useEffect(() => {
+    if (dragging.current || busy || committed.current !== null && hostIndex !== committed.current) return;
+    committed.current = null;
+    setIndex(Math.max(0, hostIndex)); draft.current = Math.max(0, hostIndex);
+  }, [hostIndex, busy]);
   const selected = levels[index];
   const highest = levels.length > 1 && index === levels.length - 1 && selected.id !== 'off' && selected.id !== undefined;
+  const wasHighest = useRef(highest), [burst, setBurst] = useState(false);
+  useEffect(() => {setBurst(highest && !wasHighest.current); wasHighest.current = highest;}, [highest]);
   const fraction = levels.length > 1 ? index / (levels.length - 1) : 0;
-  const commit = () => {if (levels[draft.current]?.id !== effort) onSelect(levels[draft.current].id);};
+  const commit = async () => {
+    const next = draft.current;
+    if (levels[next]?.id === effort) return;
+    committed.current = next;
+    if (!await onSelect(levels[next].id) && committed.current === next) {
+      committed.current = null;
+      setIndex(Math.max(0, hostIndex)); draft.current = Math.max(0, hostIndex);
+    }
+  };
   const title = dragging.current || hostIndex >= 0 ? selected.label : effort ?? 'Default';
   return <div className="dme-codex-effort" data-highest={highest || undefined} data-dragging={isDragging || undefined} data-minimum={index === 0 || undefined}>
     <button type="button" className="dme-model-link" onClick={onModels}>
-      <span className="dme-effort-title" aria-live="polite"><span key={title}>{title}</span></span>
+      <span className="dme-effort-title" aria-live="polite"><span>{title}</span></span>
       <span className="dme-current-model">{modelName}<Chevron/></span>
     </button>
     <div className="dme-slider" style={{'--dme-progress': fraction}}>
       <div className="dme-rail">
       <div className="dme-rail-fill"/>
-      {highest && <div className="dme-max-fill" aria-hidden="true"/>}
+      {highest && <div className="dme-max-fill" data-reveal={burst || undefined} aria-hidden="true"/>}
       <div className="dme-ticks" aria-hidden="true">{levels.map((level, n) => <i key={level.key} data-hovered={hoveredTick === n || undefined} data-filled={n <= index || undefined} style={{left: `${levels.length > 1 ? n / (levels.length - 1) * 100 : 0}%`}}/>)}</div>
       {highest && <div className="dme-particles" aria-hidden="true">{Array.from({length: 18}, (_, n) => <i key={n} style={{left: `${5 + (n * 37 % 89)}%`, top: `${20 + n * 23 % 60}%`, width: `${n % 5 === 0 ? 2.5 : 1.5}px`, height: `${n % 5 === 0 ? 2.5 : 1.5}px`, animationDelay: `${-n * .31}s`, animationDuration: `${2.4 + n % 4 * .6}s`}}/>)}</div>}
       </div>
-      {highest && <div className="dme-thumb-particles" aria-hidden="true">{Array.from({length: 16}, (_, n) => {
+      {highest && burst && <div className="dme-thumb-particles" aria-hidden="true">{Array.from({length: 16}, (_, n) => {
         const angle = n * Math.PI / 8 - Math.PI / 2, radius = n < 11 ? 34 : 24;
         return <i key={n} style={{'--spark-x': `${Math.cos(angle) * radius}px`, '--spark-y': `${Math.sin(angle) * radius}px`, animationDelay: `${n % 3 * 6}ms`}}/>;
       })}</div>}
       <div className="dme-slider-position" aria-hidden="true"><div ref={thumb} className="dme-slider-thumb"/></div>
       <input type="range" aria-label="思考强度" aria-valuetext={selected.label} min="0" max={levels.length - 1} step="1" value={index}
         disabled={busy || levels.length < 2}
+        style={{cursor: busy || levels.length < 2 ? 'default' : isDragging ? 'grabbing' : hoveredTick !== null ? 'pointer' : thumbHovered ? 'grab' : 'default'}}
         onPointerMove={e => {
           const bounds = e.currentTarget.getBoundingClientRect(), x = e.clientX - bounds.left;
           const tick = Math.round((x - 14) / (bounds.width - 28) * (levels.length - 1));
@@ -98,9 +113,14 @@ function EffortSlider({levels, effort, busy, onSelect, modelName, onModels}) {
           setHoveredTick(!overThumb && Math.abs(x - tickX) <= 8 ? tick : null);
         }}
         onPointerLeave={() => {setHoveredTick(null); setThumbHovered(false);}}
-        onPointerDown={e => {dragging.current = true; setDragging(true); e.currentTarget.setPointerCapture(e.pointerId);}}
+        onPointerDown={e => {
+          const bounds = thumb.current.getBoundingClientRect();
+          const fromThumb = e.clientX >= bounds.left - 3 && e.clientX <= bounds.right + 3;
+          dragging.current = fromThumb; setDragging(fromThumb);
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
         onChange={e => {draft.current = Number(e.target.value); setIndex(draft.current); if (!dragging.current) commit();}}
-        onPointerUp={() => {dragging.current = false; setDragging(false); commit();}}
+        onPointerUp={() => {if (dragging.current) {dragging.current = false; setDragging(false); commit();}}}
         onPointerCancel={() => {dragging.current = false; setDragging(false); setIndex(Math.max(0, hostIndex)); draft.current = Math.max(0, hostIndex);}}
         onBlur={() => {if (dragging.current) {dragging.current = false; setDragging(false); commit();}}}/>
     </div>
@@ -110,34 +130,57 @@ function EffortSlider({levels, effort, busy, onSelect, modelName, onModels}) {
 export function CodexPicker({locked, available, directory, load, select}) {
   const state = useSyncExternalStore(fn => directory.subscribe(fn), () => directory.getSnapshot());
   const {choices, current, levels, effort, label} = pickerModel(state);
-  const [open, setOpen] = useState(false), [pane, setPane] = useState('root'), [query, setQuery] = useState('');
+  const [popupState, setPopupState] = useState('closed'), [pane, setPane] = useState('root'), [query, setQuery] = useState('');
+  const open = popupState === 'open', mounted = popupState !== 'closed';
+  const popupStateRef = useRef(popupState); popupStateRef.current = popupState;
   const [error, setError] = useState('');
   const trigger = useRef(null), panel = useRef(null), content = useRef(null), id = useId();
   const [height, setHeight] = useState(null);
   const busy = locked || state.pending !== null;
   const failures = state.failures ?? [];
   const loadError = state.error?.message;
-  const close = (focus = true) => {setOpen(false); if (focus) trigger.current?.focus();};
-  const position = usePopover(open, pane, trigger, panel, close);
+  const close = (focus = true) => {
+    if (popupStateRef.current !== 'open') return;
+    const style = getComputedStyle(panel.current);
+    panel.current.style.setProperty('--dme-close-opacity', style.opacity);
+    panel.current.style.setProperty('--dme-close-scale', new DOMMatrix(style.transform).a);
+    setPopupState('closing');
+    if (focus) trigger.current?.focus();
+  };
+  const position = usePopover(mounted, pane, trigger, panel, close);
+  useEffect(() => {
+    if (popupState !== 'closing') return;
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    const finish = () => {if (reduced.matches) setPopupState('closed');};
+    finish(); reduced.addEventListener('change', finish);
+    return () => reduced.removeEventListener('change', finish);
+  }, [popupState]);
   useEffect(() => {if (available) load();}, [directory, available]);
   useEffect(() => {if (locked || !available) close(false);}, [locked, available]);
   const commit = async (selection, keepOpen = false) => {
     setError('');
     try {
       const result = await select(selection);
-      if (result?.ok === false) {setError(result.error.message); return;}
+      if (result?.ok === false) {setError(result.error.message); return false;}
       if (!keepOpen) close();
-    } catch (e) {setError(e.message);}
+      return true;
+    } catch (e) {setError(e.message); return false;}
   };
   const selectEffort = value => {
-    if (!current || busy) return;
-    commit({provider: current.provider, model: current.model.id,
+    if (!current || busy) return false;
+    return commit({provider: current.provider, model: current.model.id,
       ...(value === undefined ? {} : {reasoningEffort: value})}, true);
+  };
+  const selectModel = async choice => {
+    if (!await commit(modelSelection(choice), true) || popupStateRef.current !== 'open') return;
+    if (choice.model.reasoning) {setPane('root'); setQuery('');}
+    else close();
   };
   const modelPane = pane === 'models' || !levels.length;
   const visible = choices.filter(choice => `${choice.model.name} ${choice.model.id} ${choice.providerName}`.toLowerCase().includes(query.toLowerCase()));
   useLayoutEffect(() => {
-    if (!open) {setHeight(null); return;}
+    if (!mounted) {setHeight(null); return;}
+    if (!open) return;
     const measure = () => {
       const computed = getComputedStyle(panel.current);
       const padding = parseFloat(computed.paddingTop) + parseFloat(computed.paddingBottom)
@@ -157,7 +200,7 @@ export function CodexPicker({locked, available, directory, load, select}) {
     const observer = new ResizeObserver(measure);
     for (const element of content.current.querySelectorAll('.dme-codex-effort,.dme-model-header,.dme-model-list,.dme-picker-error')) observer.observe(element);
     return () => observer.disconnect();
-  }, [open, modelPane, choices.length, query, error, loadError, failures.length]);
+  }, [mounted, open, modelPane, choices.length, query, error, loadError, failures.length]);
   useLayoutEffect(() => {
     if (open && modelPane) content.current.querySelector('.dme-model-list').scrollTop = 0;
   }, [open, pane]);
@@ -192,11 +235,14 @@ export function CodexPicker({locked, available, directory, load, select}) {
   };
   return <>
     <button ref={trigger} type="button" className="dme-picker-trigger dme-picker-codex" aria-label={`选择模型 ${current?.model.name ?? ''} ${label}`.trim()}
-      aria-expanded={open} aria-controls={open ? id : undefined} aria-haspopup="dialog" disabled={busy || !available}
-      onClick={() => {setOpen(!open); setPane('root'); setQuery(''); setError(''); if (!open) load();}}>
-      <span>{current?.model.name ?? '选择模型'}</span>{label && <span className="dme-trigger-effort">{label}</span>}<Chevron/>
+      data-open={mounted || undefined} data-placeholder={mounted && !modelPane || undefined} aria-busy={state.pending !== null} aria-expanded={open} aria-controls={open ? id : undefined} aria-haspopup="dialog" disabled={locked || !available}
+      onClick={() => {open ? close(false) : setPopupState('open'); if (!open) {setPane('root'); setQuery(''); setError(''); load();}}}>
+      <span hidden={mounted && !modelPane}>{current?.model.name ?? '选择模型'}</span>{label && <span hidden={mounted && !modelPane} className="dme-trigger-effort">{label}</span>}
+      {mounted && !modelPane && <span className="dme-trigger-placeholder">选择强度</span>}<Chevron/>
     </button>
-    {open && createPortal(<div ref={panel} id={id} className="dme-picker-panel dme-picker-codex" role="dialog" aria-label="模型与思考强度"
+    {mounted && createPortal(<div ref={panel} id={id} className="dme-picker-panel dme-picker-codex" role="dialog" aria-label="模型与思考强度"
+      data-state={popupState} aria-busy={!locked && state.pending !== null} aria-hidden={!open} inert={!open}
+      onAnimationEnd={e => {if (e.target === e.currentTarget && e.animationName === 'dme-popup-out') setPopupState(state => state === 'closing' ? 'closed' : state);}}
       data-pane={modelPane ? 'models' : pane} style={{...(position ?? {visibility: 'hidden'}), ...(height === null ? {} : {height})}} onKeyDown={onKeyDown}>
       <div ref={content} className="dme-picker-content"><div className="dme-picker-views">
         <div className="dme-picker-pane dme-picker-root" data-active={!modelPane} aria-hidden={modelPane} inert={modelPane}>
@@ -211,7 +257,7 @@ export function CodexPicker({locked, available, directory, load, select}) {
           <div className="dme-model-list" role="menu" aria-label="模型">
             {visible.map(choice => <button type="button" key={JSON.stringify([choice.provider, choice.model.id])} role="menuitemradio"
               aria-label={choice.model.name} aria-description={choice.providerName || choice.provider}
-              aria-checked={choice.selected} disabled={busy} onClick={() => commit(modelSelection(choice))}>
+              aria-checked={choice.selected} disabled={busy} onClick={() => {setPane('models'); selectModel(choice);}}>
               <span className="dme-model-name">{choice.model.name}
                 <small>{choice.providerName || choice.provider}</small>
               </span>{choice.selected && <Check/>}

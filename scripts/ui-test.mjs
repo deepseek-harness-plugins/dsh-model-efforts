@@ -372,6 +372,11 @@ try {
     await pickerPopup.screenshot({path: join(artifacts, name)});
   };
   const slider = page.getByRole('slider', {name: '思考强度', exact: true});
+  await pickerTrigger.hover();
+  await page.waitForTimeout(140);
+  assert.equal(await pickerTrigger.evaluate(el => getComputedStyle(el).borderRadius), '999px');
+  assert.equal(await pickerTrigger.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(243, 243, 244)');
+  await pickerTrigger.screenshot({path: join(artifacts, 'codex-trigger-hover.png')});
   await pickerTrigger.click();
   assert.equal(await pickerPopup.evaluate(el => getComputedStyle(el).cornerShape), 'superellipse(1)');
   assert.equal(await page.locator('.dme-slider-thumb').evaluate(el => getComputedStyle(el).cornerShape), 'superellipse(1)');
@@ -383,7 +388,10 @@ try {
   assert.equal(await page.locator('.dme-rail').evaluate(el => el.offsetHeight), 24);
   assert.equal(await page.locator('.dme-slider-thumb').evaluate(el => el.offsetWidth), 28);
   assert.equal(await slider.evaluate(el => getComputedStyle(el).cursor), 'default');
-  assert.equal(await page.locator('.dme-model-link').evaluate(el => getComputedStyle(el).cursor), 'default');
+  assert.equal(await page.locator('.dme-model-link').evaluate(el => getComputedStyle(el).cursor), 'pointer');
+  assert.equal(await pickerTrigger.evaluate(el => getComputedStyle(el).cursor), 'pointer');
+  assert.equal(await pickerTrigger.innerText(), '选择强度');
+  assert.equal(await pickerTrigger.evaluate(el => el.offsetWidth), 146);
   assert.equal(await page.locator('.dme-slider-position').evaluate(el => getComputedStyle(el).transitionDuration), '0.3s');
   assert.equal(await slider.getAttribute('max'), '5'); // off + five Opus 5 levels
   assert.equal(await slider.getAttribute('aria-valuetext'), 'high');
@@ -415,11 +423,32 @@ try {
   await pickerPopup.screenshot({path: join(artifacts, 'codex-max-burst.png')});
   await screenshotPopup('codex-max.png');
   assert.equal(await page.locator('.dme-thumb-particles i').first().evaluate(el => getComputedStyle(el).opacity), '0');
+  await slider.press('Escape');
+  await pickerPopup.waitFor({state: 'detached'});
+  await pickerTrigger.click();
+  await screenshotPopup('codex-max-reopen.png');
+  assert.equal(await page.locator('.dme-thumb-particles').count(), 0, 'reopening the highest tier does not repeat its burst');
+  assert.equal(await page.locator('.dme-max-fill').evaluate(el => getComputedStyle(el).animationName), 'none');
+  const stableAnchor = await pickerPopup.boundingBox();
+  const stableTrigger = await pickerTrigger.boundingBox();
   await slider.press('ArrowLeft');
   await page.waitForFunction(() => document.querySelector('.dme-trigger-effort')?.textContent === 'xhigh');
   assert.equal(await page.locator('.dme-particles').count(), 0);
   await screenshotPopup('codex-effort.png');
-  await slider.press('Escape');
+  const afterTier = await pickerPopup.boundingBox(), afterTrigger = await pickerTrigger.boundingBox();
+  assert.equal(Math.abs(afterTier.x - stableAnchor.x) < .1 && Math.abs(afterTier.y - stableAnchor.y) < .1, true, 'changing tiers does not shift the menu');
+  assert.deepEqual(afterTrigger, stableTrigger);
+  const dismissal = await slider.evaluate(async el => {
+    el.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+    await new Promise(resolve => setTimeout(resolve, 55));
+    const panel = document.querySelector('.dme-picker-panel'), style = getComputedStyle(panel);
+    return {state: panel.dataset.state, name: style.animationName, opacity: Number(style.opacity), cursor: style.pointerEvents};
+  });
+  assert.equal(dismissal.state, 'closing');
+  assert.equal(dismissal.name, 'dme-popup-out');
+  assert.equal(dismissal.opacity > 0 && dismissal.opacity < 1, true);
+  assert.equal(dismissal.cursor, 'none');
+  await pickerPopup.waitFor({state: 'detached'});
   assert.equal(await pickerTrigger.evaluate(el => el === document.activeElement), true);
   await send('Codex 选择器实际选择 xhigh');
   assert.equal(requests.at(-1).output_config.effort, 'xhigh');
@@ -434,6 +463,8 @@ try {
   assert.equal(await page.locator('.dme-model-link .dme-effort-title').count(), 1);
   await screenshotPopup('codex-hover.png');
   await page.locator('.dme-model-link').click();
+  assert.equal(await pickerTrigger.innerText().then(text => text.replace(/\s+/g, ' ')), 'claude-opus-5 xhigh');
+  assert.equal(await pickerTrigger.locator('.dme-trigger-placeholder').count(), 0);
   const anchors = await pickerPopup.evaluate(async el => {
     const edges = [];
     for (let n = 0; n < 12; n++) {
@@ -449,8 +480,26 @@ try {
   assert.equal(await pickerPopup.evaluate(el => getComputedStyle(el).borderRadius), '16px');
   assert.equal((await pickerPopup.boundingBox()).height > smallHeight, true);
   assert.equal(await pickerPopup.evaluate(el => el.scrollTop), 0);
-  await pickerPopup.getByRole('menuitemradio', {name: 'claude-opus-5-5', exact: true}).click();
   await pickerTrigger.click();
+  assert.equal(await pickerPopup.evaluate(el => el.dataset.state), 'closing');
+  assert.equal(await pickerPopup.evaluate(el => getComputedStyle(el).animationName), 'dme-popup-out');
+  await pickerPopup.waitFor({state: 'detached'});
+  await pickerTrigger.click(); await page.locator('.dme-model-link').click();
+  await screenshotPopup('codex-models.png');
+  await pickerPopup.getByRole('menuitemradio', {name: 'claude-opus-5-5', exact: true}).click();
+  await page.waitForFunction(() => document.querySelector('.dme-picker-panel')?.dataset.pane === 'root');
+  const contraction = await pickerPopup.evaluate(async el => {
+    const frames = [];
+    for (let n = 0; n < 16; n++) {
+      await new Promise(requestAnimationFrame);
+      const box = el.getBoundingClientRect(); frames.push({height: box.height, bottom: box.bottom});
+    }
+    return frames;
+  });
+  assert.equal(Math.max(...contraction.map(frame => frame.height)) > Math.min(...contraction.map(frame => frame.height)) + 1, true, 'choosing a model contracts the open menu back to the effort pane');
+  assert.equal(Math.max(...contraction.map(frame => frame.bottom)) - Math.min(...contraction.map(frame => frame.bottom)) < 1, true);
+  assert.equal(await pickerPopup.getAttribute('data-state'), 'open');
+  assert.equal(await pickerTrigger.innerText(), '选择强度');
   assert.equal(await slider.getAttribute('max'), '4'); // no off and no Default
   assert.equal(await page.locator('.dme-ticks i').count(), 5);
   assert.equal(await slider.getAttribute('aria-valuetext'), 'medium');
@@ -462,30 +511,40 @@ try {
   await page.mouse.move(tickX, rail.y + rail.height / 2);
   await page.waitForTimeout(160);
   assert.equal(await page.locator('.dme-ticks i[data-hovered]').count(), 1);
+  assert.equal(await slider.evaluate(el => getComputedStyle(el).cursor), 'pointer');
   assert.equal(await page.locator('.dme-ticks i[data-hovered]').evaluate(el => new DOMMatrix(getComputedStyle(el).transform).a), 2);
+  await page.mouse.down();
+  assert.equal(await page.locator('.dme-slider-position').evaluate(el => getComputedStyle(el).transitionDuration), '0.3s', 'clicking a tick uses normal snap timing');
+  assert.equal(await page.locator('.dme-codex-effort').getAttribute('data-dragging'), null);
+  await page.mouse.up();
+  await page.waitForFunction(() => document.querySelector('.dme-trigger-effort')?.textContent === 'high');
+  await screenshotPopup('codex-tick-click.png');
   const thumbBox = await page.locator('.dme-slider-thumb').boundingBox();
   await page.mouse.move(thumbBox.x + thumbBox.width / 2, thumbBox.y + thumbBox.height / 2);
   await page.waitForTimeout(700);
   assert.equal(Math.abs((await page.locator('.dme-slider-thumb').boundingBox()).width - 32) < .1, true);
+  assert.equal(await slider.evaluate(el => getComputedStyle(el).cursor), 'grab');
   await screenshotPopup('codex-thumb-hover.png');
-  await page.mouse.move(rail.x + rail.width / 2, rail.y + rail.height / 2);
+  await page.mouse.move(thumbBox.x + thumbBox.width / 2, thumbBox.y + thumbBox.height / 2);
   await page.mouse.down();
   assert.equal(await slider.evaluate(el => getComputedStyle(el).cursor), 'grabbing');
   assert.equal(await page.locator('.dme-slider-position').evaluate(el => getComputedStyle(el).transitionDuration), '0.15s');
   await page.mouse.move(rail.x + rail.width - 14, rail.y + rail.height / 2, {steps: 8});
   await page.mouse.up();
-  assert.equal(await slider.evaluate(el => getComputedStyle(el).cursor), 'default');
   await page.waitForFunction(() => document.querySelector('.dme-trigger-effort')?.textContent === 'max');
   await page.emulateMedia({reducedMotion: 'reduce'});
   assert.equal(await page.locator('.dme-particles i').first().evaluate(el => getComputedStyle(el).animationName), 'none');
+  assert.equal(await page.locator('.dme-max-fill').evaluate(el => getComputedStyle(el).animationName), 'none');
+  await slider.press('Escape'); await pickerPopup.waitFor({state: 'detached'});
   await page.emulateMedia({reducedMotion: 'no-preference'});
-  await slider.press('Escape');
   await send('Codex 拖动最高档位为 max');
   assert.equal(requests.at(-1).model, 'claude-opus-5-5'); assert.equal(requests.at(-1).output_config.effort, 'max');
   // Model UI switch does not alter model configuration, and the editor is independent.
   const beforePreferences = await readFile(configPath, 'utf8');
   await settingsButton.click();
   await page.getByRole('button', {name: '通用设置', exact: true}).click();
+  assert.equal(await page.getByRole('radio', {name: 'Codex', exact: true}).evaluate(el => getComputedStyle(el).cursor), 'pointer');
+  assert.equal(await page.getByRole('switch', {name: '思考强度设置 UI', exact: true}).evaluate(el => getComputedStyle(el).cursor), 'pointer');
   assert.equal(await page.getByRole('button', {name: '模型与思考强度', exact: true}).count(), 0);
   assert.equal(await page.locator('.dme-settings h2').count(), 0);
   await page.getByRole('switch', {name: '思考强度设置 UI', exact: true}).click();
@@ -508,7 +567,7 @@ try {
   await send('Codex 选择器 low'); assert.equal(requests.at(-1).output_config.effort, 'low');
   await pickerTrigger.click(); await page.locator('.dme-model-link').click();
   await pickerPopup.getByRole('menuitemradio', {name: 'claude-opus-5', exact: true}).click();
-  await pickerTrigger.click(); await slider.press('Home');
+  await slider.press('Home');
   await page.waitForFunction(() => document.querySelector('.dme-trigger-effort')?.textContent === 'off');
   await slider.press('Escape'); await send('Codex 选择器 off');
   assert.equal(requests.at(-1).model, 'claude-opus-5'); assert.equal(requests.at(-1).thinking.type, 'disabled'); assert.equal(requests.at(-1).output_config, undefined);
@@ -518,7 +577,8 @@ try {
   await pickerTrigger.click(); await page.locator('.dme-model-link').click();
   await pickerPopup.getByRole('menuitemradio').first().press('Escape');
   assert.equal(await slider.count(), 1); // back to slider
-  await slider.press('Escape'); assert.equal(await pickerPopup.count(), 0);
+  await slider.press('Escape'); await pickerPopup.waitFor({state: 'detached'});
+  assert.equal(await pickerPopup.count(), 0);
   await page.setViewportSize({width: 390, height: 760});
   await pickerTrigger.click();
   const popupBounds = await pickerPopup.boundingBox();
@@ -548,6 +608,8 @@ try {
   assert.equal(await pickerPopup.locator('.dme-model-name small').count(), await pickerPopup.getByRole('menuitemradio').count());
   assert.equal(await pickerPopup.locator('.dme-model-name small').first().innerText(), '模型思考档位');
   const headerBefore = await page.locator('.dme-model-header').boundingBox();
+  assert.equal(await page.getByRole('searchbox', {name: '搜索模型', exact: true}).evaluate(el => getComputedStyle(el).cursor), 'text');
+  assert.equal(await pickerPopup.getByRole('menuitemradio').first().evaluate(el => getComputedStyle(el).cursor), 'pointer');
   await pickerPopup.locator('.dme-model-list').evaluate(el => el.scrollTop = el.scrollHeight);
   const headerBounds = await page.locator('.dme-model-header').boundingBox();
   assert.equal(Math.abs(headerBounds.y - headerBefore.y) < .1, true);
