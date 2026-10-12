@@ -53,15 +53,14 @@ function EffortRow({row}) {
       <button type="button" disabled={row.disabled || same(draft, row.baseline)} onClick={() => change(row.baseline)}>重置</button>
     </div></div>
     <div className="dme-chips" aria-label="已配置的思考档位">
-      {LEVELS.filter(k => active.includes(k)).map(k => <span className="dme-chip" key={k} data-default={draft.defaultReasoningEffort === k || undefined}>
+      {LEVELS.filter(k => active.includes(k)).map(k => <span className="dme-chip" key={k} role="group" aria-label={k + ' 档位'} data-default={draft.defaultReasoningEffort === k || undefined}>
         <span className="dme-level">
           {k}{draft.defaultReasoningEffort === k && <span className="dme-default">default</span>}
         </span>
-        <button className="dme-set-default" type="button" disabled={row.disabled} aria-label={'设 ' + k + ' 为默认档位'} aria-pressed={draft.defaultReasoningEffort === k}
-          title={draft.defaultReasoningEffort === k ? '默认档位' : '设为默认'}
+        {draft.defaultReasoningEffort !== k && <button className="dme-set-default" type="button" disabled={row.disabled} aria-label={'设 ' + k + ' 为默认档位'}
           onClick={() => change((_current, latest) => ({...latest, defaultReasoningEffort: k}))}>
-          <span aria-hidden="true">{draft.defaultReasoningEffort === k ? '★' : '☆'}</span>
-        </button>
+          设为默认
+        </button>}
         <button type="button" disabled={row.disabled} aria-label={'删除 ' + k + ' 档位'} onClick={() => remove(k)}>×</button>
       </span>)}
       <select className="dme-add" aria-label="增加思考档位" disabled={row.disabled} value="" onChange={e => add(e.target.value)}>
