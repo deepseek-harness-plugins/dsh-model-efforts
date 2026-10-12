@@ -1,6 +1,6 @@
 {
   "name": "@deepseekharness-plugin/dsh-model-efforts",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "description": "DeepSeek Harness 模型思考强度与默认档位配置插件",
   "type": "module",
   "license": "MIT",

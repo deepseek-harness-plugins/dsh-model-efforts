@@ -1,15 +1,15 @@
 # 验证记录
 
-日期：2026-10-12。插件：0.3.4。宿主：DeepSeek Harness 0.2.0-rc.2。功能验证运行在隔离的 web profile，使用系统 Chrome。
+日期：2026-10-12。插件：0.3.5。宿主：DeepSeek Harness 0.2.0-rc.2。功能验证运行在隔离的 web profile，使用系统 Chrome。
 
 ## 已验证
 
 - 构建成功，客户端约 17 KB，服务端约 4 KB，使用 DSH 共享的 React。
-- 10 项逻辑测试通过，包括目录、协议和托管端点范围、原字段保留、重置、默认值校验、模型间独立默认值、显式选择优先、旧快照一致性、实例方法恢复和非法默认值拒绝。
+- 11 项逻辑测试通过，包括目录、Claude 完全关闭能力、协议和托管端点范围、原字段保留、重置、默认值校验、模型间独立默认值、显式选择优先、旧快照一致性、实例方法恢复和非法默认值拒绝。
 - 控件位于每个展开模型的容量设置下方、输入类型上方。
 - 界面包含思考强度、档位标签、标签内的“设为默认”文字按钮、添加档位、自动匹配、重置，使用原生保存和取消。
 - 档位标签和添加列表直接显示 `off`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`，不翻译成中文。
-- Opus 5.5 匹配 low / medium / high / xhigh / max；Sonnet 4.6 不提供 xhigh。
+- Opus 5.5 匹配 low / medium / high / xhigh / max，不提供 off；Sonnet 4.6 提供 off / low / medium / high / max，不提供 xhigh。
 - 标签增删、重置以及折叠后重新展开均正常。
 - 只修改思考档位即可通过原生“保存”写入并重新打开读回。
 - 原生“取消”同时丢弃容量和档位修改，配置文件不变。
@@ -23,12 +23,14 @@
 - 设置明确默认值后，聊天菜单显示 Low、Medium、High、Xhigh、Max，没有 Default，并正确默认选中 Medium。
 - 默认 Medium 和显式选择 Max 的真实聊天请求均发往本地模拟 Anthropic 服务，分别包含 `output_config.effort = "medium"` / `"max"`，以及 `thinking.type = "adaptive"`。
 - 手工模型单独显示 Off、High，默认 Off 的请求包含 `thinking.type = "disabled"`，没有 output_config。
+- 官方目录中的 Opus 5 自动匹配 Off、Low、Medium、High、Xhigh、Max。设默认 Xhigh 后，聊天显式选择 Off 的请求仍只发送 `thinking.type = "disabled"`，没有 output_config；再选择 High 时恢复 adaptive 和 effort = high。
+- Claude 关闭能力覆盖 14 个已收录 ID：7 个提供 off，7 个不提供。Sonnet 5.5 的 between_tools 不标为完全关闭。
 - 禁用插件后恢复原生菜单的 Default 选项。
 - 测试过程中没有页面异常。
 
 ## 验证边界
 
-目录的 83 个明确 ID（包含官方别名和日期版本）、40 条协议规则均附官方来源；没有逐一请求所有厂商的付费接口。GLM、Kimi 规则限定 QwenCloud 托管端点。
+目录的 83 个明确 ID（包含官方别名和日期版本）、42 条协议规则均附官方来源；没有逐一请求所有厂商的付费接口。GLM、Kimi 规则限定 QwenCloud 托管端点。
 
 完整操作流程在隔离 web profile 验证。桌面环境升级插件后，需要重新启动 DSH 加载新版客户端。
 

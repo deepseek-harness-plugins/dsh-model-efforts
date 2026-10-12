@@ -3,6 +3,7 @@
 export const checkedOn = '2026-10-12';
 const openai = 'https://developers.openai.com/api/docs/models/';
 const claude = 'https://platform.claude.com/docs/en/build-with-claude/effort';
+const claudeThinking = 'https://platform.claude.com/docs/en/build-with-claude/thinking#configuring-thinking';
 const google = 'https://ai.google.dev/gemini-api/docs/openai';
 const googleThinking = 'https://ai.google.dev/gemini-api/docs/thinking';
 const deepseek = 'https://api-docs.deepseek.com/api/list-models/';
@@ -13,16 +14,18 @@ const lmhm = ['low', 'medium', 'high', 'max'];
 const lmhxm = ['low', 'medium', 'high', 'xhigh', 'max'];
 const offlmhx = ['off', 'low', 'medium', 'high', 'xhigh'];
 // This is the plugin's initial selection, not a claim about a provider's API
-// default. Users can choose any offered level by clicking its chip.
+// default. Users can change it with the set-default button in each chip.
 const add = (vendor, ids, levels, sources, extra = {}) => ({vendor, ids, levels, sources,
   defaultEffort: levels.includes('high') ? 'high' : levels.includes('medium') ? 'medium' : levels.find(k => k !== 'off'), apis: oaApis, ...extra});
 const o = (id, levels, snapshots = [], extra = {}) => add('OpenAI', [id, ...snapshots], levels, [openai + id], extra);
-const a = (ids, levels) => add('Anthropic', ids, levels, [claude], {apis: ['anthropic-messages'], note: '使用自适应思考；不额外提供关闭档位。'});
+const a = (ids, levels, note) => add('Anthropic', ids, levels, [claude, claudeThinking], {apis: ['anthropic-messages'], note});
 const g = (ids, levels, note) => add('Google', ids, levels, [google, googleThinking], {apis: ['openai-completions'], note});
 const hosted = {apis: ['openai-completions'], format: 'qwen', hosts: ['dashscope.aliyuncs.com', 'dashscope-intl.aliyuncs.com', 'dashscope.qwen.ai', 'dashscope-us.aliyuncs.com', 'dashscope-eu.aliyuncs.com'], note: '这条规则仅适用于 QwenCloud / DashScope 托管接口。'};
 export const catalog = [
-  a(['claude-fable-5-1', 'claude-mythos-5-1', 'claude-fable-5', 'claude-mythos-5', 'claude-opus-5-5', 'claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-5-5', 'claude-sonnet-5', 'claude-haiku-5-5'], lmhxm),
-  a(['claude-mythos-preview', 'claude-opus-4-6', 'claude-sonnet-4-6'], lmhm),
+  a(['claude-fable-5-1', 'claude-mythos-5-1', 'claude-fable-5', 'claude-mythos-5', 'claude-opus-5-5', 'claude-sonnet-5-5'], lmhxm, '不支持完整关闭思考。Sonnet 5.5 的 between_tools 仅关闭前置思考，因此不标为 off。'),
+  a(['claude-opus-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-5', 'claude-haiku-5-5'], ['off', ...lmhxm], 'off 发送 thinking.type = disabled，不附 output_config.effort。Opus 5 和 Haiku 5.5 禁止 disabled 与 xhigh / max 组合。'),
+  a(['claude-mythos-preview'], lmhm, '使用自适应思考；不支持关闭思考。'),
+  a(['claude-opus-4-6', 'claude-sonnet-4-6'], ['off', ...lmhm], 'off 发送 thinking.type = disabled；其余档位使用自适应思考。'),
   o('gpt-6-astra', lmhxm, [], {apis: ['openai-responses'], note: 'DSH 需要工具调用，因此仅自动适配 Responses。'}),
   o('gpt-6.1-sol', lmhxm, [], {apis: ['openai-responses'], note: '工具调用需要 Responses；不支持 none / minimal。'}),
   o('gpt-6-sol', ['off', ...lmhxm], [], {apis: ['openai-responses'], note: '带思考的工具调用需要 Responses。'}),

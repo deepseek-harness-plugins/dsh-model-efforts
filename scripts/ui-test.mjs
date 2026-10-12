@@ -12,10 +12,11 @@ const artifacts = join(project, 'test-results');
 const requests = [];
 const mock = createServer(async (req, res) => {
   let body = ''; for await (const chunk of req) body += chunk;
-  requests.push(JSON.parse(body));
+  const request = JSON.parse(body);
+  requests.push(request);
   res.writeHead(200, {'Content-Type': 'text/event-stream'});
   const send = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify({type, ...data})}\n\n`);
-  send('message_start', {message: {id: 'msg_fixture', type: 'message', role: 'assistant', content: [], model: 'claude-opus-5-5', stop_reason: null, stop_sequence: null, usage: {input_tokens: 1, output_tokens: 0}}});
+  send('message_start', {message: {id: 'msg_fixture', type: 'message', role: 'assistant', content: [], model: request.model, stop_reason: null, stop_sequence: null, usage: {input_tokens: 1, output_tokens: 0}}});
   send('content_block_start', {index: 0, content_block: {type: 'text', text: ''}});
   send('content_block_delta', {index: 0, delta: {type: 'text_delta', text: '本地测试已收到思考档位。'}});
   send('content_block_stop', {index: 0});
@@ -151,7 +152,8 @@ try {
   await nativeRows.nth(0).getByLabel('最大输出 token 数 1', {exact: true}).fill('64K');
   let sonnet = await expand(1);
   await sonnet.getByRole('button', {name: '自动匹配', exact: true}).click();
-  await chips('claude-sonnet-4-6', 4);
+  await chips('claude-sonnet-4-6', 5);
+  assert.equal(await sonnet.getByLabel('增加思考档位').locator('option[value="off"]').count(), 0);
   assert.equal(await sonnet.getByLabel('增加思考档位').locator('option[value="xhigh"]').isDisabled(), true);
   await page.getByRole('button', {name: '取消', exact: true}).click();
   await page.locator('[class*="_editorRoute"]').waitFor({state: 'detached'});
@@ -211,9 +213,11 @@ try {
   await page.getByRole('menuitemradio', {name: 'Medium', exact: true}).click();
   const send = async text => {
     const before = requests.length;
+    const replies = await page.evaluate(() => [...document.querySelectorAll('body *')].filter(el => el.children.length === 0 && el.textContent === '本地测试已收到思考档位。').length);
     await page.locator('[contenteditable=true]').fill(text);
     await page.locator('[contenteditable=true]').press('Enter');
-    await page.waitForFunction(count => [...document.querySelectorAll('body *')].filter(el => el.children.length === 0 && el.textContent === '本地测试已收到思考档位。').length >= count, before + 1);
+    await page.waitForFunction(count => [...document.querySelectorAll('body *')].filter(el => el.children.length === 0 && el.textContent === '本地测试已收到思考档位。').length >= count, replies + 1);
+    assert.equal(requests.length, before + 1);
   };
   await send('确认默认 medium 档位');
   assert.equal(requests.at(-1).output_config.effort, 'medium');
@@ -236,6 +240,42 @@ try {
   await send('确认 off 明确关闭');
   assert.equal(requests.at(-1).thinking.type, 'disabled');
   assert.equal(requests.at(-1).output_config, undefined);
+
+  // Officially supported Off is independent of a model's higher default effort.
+  await settingsButton.click();
+  await page.getByRole('button', {name: /^(模型|Models)$/}).click();
+  await openEditor();
+  await page.getByRole('button', {name: '添加模型', exact: true}).click();
+  await nativeRows.nth(3).getByLabel('模型 ID 4', {exact: true}).fill('claude-opus-5');
+  await nativeRows.nth(3).getByRole('textbox').nth(1).fill('claude-opus-5');
+  const opus5 = await expand(3);
+  await opus5.getByRole('button', {name: '自动匹配', exact: true}).click();
+  await chips('claude-opus-5', 6);
+  await setDefault(opus5, 'xhigh');
+  await nativeRows.nth(3).screenshot({path: join(artifacts, 'model-off.png')});
+  await save();
+  await page.getByRole('button', {name: '关闭', exact: true}).click();
+  await page.getByText('新会话', {exact: true}).first().click();
+  await page.getByRole('button', {name: /^选择模型/}).click();
+  await page.getByRole('menuitem', {name: /模型/}).click();
+  await page.getByRole('menuitemradio', {name: 'claude-opus-5', exact: true}).click();
+  await page.getByRole('button', {name: /^选择模型/}).click();
+  await page.getByRole('menuitem', {name: /推理等级/}).click();
+  assert.deepEqual(await page.getByRole('menuitemradio').allTextContents(), ['Off', 'Low', 'Medium', 'High', 'Xhigh', 'Max']);
+  assert.equal(await page.getByRole('menuitemradio', {name: 'Xhigh', exact: true}).getAttribute('aria-checked'), 'true');
+  await page.getByRole('menuitemradio', {name: 'Off', exact: true}).click();
+  await send('确认官方 Opus 5 的 off 覆盖默认 xhigh');
+  assert.equal(requests.at(-1).model, 'claude-opus-5');
+  assert.equal(requests.at(-1).thinking.type, 'disabled');
+  assert.equal(requests.at(-1).output_config, undefined);
+  await page.getByRole('button', {name: /^选择模型/}).click();
+  await page.getByRole('menuitem', {name: /推理等级/}).click();
+  assert.equal(await page.getByRole('menuitemradio', {name: 'Off', exact: true}).getAttribute('aria-checked'), 'true');
+  await page.screenshot({path: join(artifacts, 'composer-off.png')});
+  await page.getByRole('menuitemradio', {name: 'High', exact: true}).click();
+  await send('确认从 off 切回 high 重新启用思考');
+  assert.equal(requests.at(-1).thinking.type, 'adaptive');
+  assert.equal(requests.at(-1).output_config.effort, 'high');
   await page.getByRole('button', {name: '插件', exact: true}).click();
   await page.getByRole('switch', {name: '启用 @deepseekharness-plugin/dsh-model-efforts', exact: true}).click();
   await page.getByText('新会话', {exact: true}).first().click();
@@ -246,7 +286,7 @@ try {
   await page.getByRole('menuitem', {name: /推理等级/}).click();
   assert.deepEqual(await page.getByRole('menuitemradio').allTextContents(), ['Default', 'Low', 'Medium', 'High', 'Xhigh', 'Max']);
   assert.equal(errors.length, 0, errors.join('\n'));
-  console.log('UI_TEST_PASSED', JSON.stringify({root, screenshots: artifacts, assertions: 'inline placement, text set-default button inside non-default tags only, default label and button visibility switch, native save/cancel/reset, per-model and default-only save, no Default with an explicit default, medium default request, explicit max override, off disabled request, plugin disable restores native Default, no page errors'}));
+  console.log('UI_TEST_PASSED', JSON.stringify({root, screenshots: artifacts, assertions: 'inline placement, text set-default button inside non-default tags only, default label and button visibility switch, native save/cancel/reset, per-model and default-only save, no Default with an explicit default, medium default request, explicit max override, off disabled request, known Claude Off support, Off overrides xhigh without leaking output_config, High re-enables adaptive thinking, Opus 5.5 excludes Off, plugin disable restores native Default, no page errors'}));
 } catch (e) {
   console.error('PAGE_ERRORS', errors);
   if (page) console.error('INLINE_DIAGNOSTIC', await page.evaluate(() => {

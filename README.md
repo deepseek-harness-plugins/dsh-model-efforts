@@ -26,7 +26,7 @@ npm run build
 npm pack
 ```
 
-在 DSH 的 **插件 → 添加插件** 中输入生成的 `deepseekharness-plugin-dsh-model-efforts-0.3.4.tgz` 的绝对路径，安装后启用插件。
+在 DSH 的 **插件 → 添加插件** 中输入生成的 `deepseekharness-plugin-dsh-model-efforts-0.3.5.tgz` 的绝对路径，安装后启用插件。
 
 升级时安装新版同名安装包，保存正在编辑的内容后重新启动 DSH，加载新版客户端。
 
@@ -44,11 +44,15 @@ npm pack
 
 `off` 表示关闭思考，与表示默认行为的 `Default` 不同。只有支持关闭思考的匹配规则才提供 `off`。
 
+Claude 的关闭能力按具体模型匹配。Opus 4.6 / 4.7 / 4.8 / 5、Sonnet 4.6 / 5 和 Haiku 5.5 提供 `off`；Opus 5.5、Fable、Mythos 和 Sonnet 5.5 不提供完全关闭选项。Sonnet 5.5 的 `between_tools` 只关闭前置思考，不标为 `off`。能力依据 [Anthropic 官方配置表](https://platform.claude.com/docs/en/build-with-claude/thinking#configuring-thinking)。
+
+在 Anthropic Messages 协议下，`off` 发送 `thinking.type = "disabled"`，不附 `output_config.effort`，避免 Opus 5 和 Haiku 5.5 的关闭请求与 `xhigh` / `max` 冲突。已配置的模型需要重新点击 **自动匹配** 并保存，才会使用更新后的档位列表。
+
 自动匹配优先将 `high` 设为默认，其次为 `medium`，否则选择一个支持的思考档位。此选择是插件的预设策略，可以在界面修改。删除当前默认档位会重新选择；删除全部档位会同时清除默认值。
 
 ## 模型支持
 
-模型目录包含 83 个模型 ID、40 条协议规则，覆盖 Anthropic、OpenAI、Google、DeepSeek、Qwen、xAI，以及 QwenCloud 托管的 GLM 和 Kimi。目录核对日期为 2026-10-12。
+模型目录包含 83 个模型 ID、42 条协议规则，覆盖 Anthropic、OpenAI、Google、DeepSeek、Qwen、xAI，以及 QwenCloud 托管的 GLM 和 Kimi。目录核对日期为 2026-10-12。
 
 自动匹配依据模型 ID、API 协议和适用端点。完整档位列表及官方来源见 [模型目录](docs/MODEL-CATALOG.md)。
 

@@ -1,13 +1,15 @@
 # 模型思考档位目录
 
-核对日期：2026-10-12。83 个明确模型 ID（包含已核实的别名和日期版本），40 条协议规则。
+核对日期：2026-10-12。83 个明确模型 ID（包含已核实的别名和日期版本），42 条协议规则。
 
 此表由 src/catalog.js 生成。off 与 Default 独立，实际关闭参数由协议适配决定；思考档位使用同名接口值。初始默认列是插件的预选档位，可在 UI 修改，不代表厂商 API 的官方默认值。能力目录附官方来源，第三方网关是否兼容需单独验证。托管规则不可推广到其他端点。
 
 | 厂商 / 部署 | 模型 ID | 档位 | 初始默认 | DSH API | 来源 | 说明 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Anthropic | `claude-fable-5-1`<br>`claude-mythos-5-1`<br>`claude-fable-5`<br>`claude-mythos-5`<br>`claude-opus-5-5`<br>`claude-opus-5`<br>`claude-opus-4-8`<br>`claude-opus-4-7`<br>`claude-sonnet-5-5`<br>`claude-sonnet-5`<br>`claude-haiku-5-5` | low / medium / high / xhigh / max | high | anthropic-messages | [官方1](https://platform.claude.com/docs/en/build-with-claude/effort) | 使用自适应思考；不额外提供关闭档位。 |
-| Anthropic | `claude-mythos-preview`<br>`claude-opus-4-6`<br>`claude-sonnet-4-6` | low / medium / high / max | high | anthropic-messages | [官方1](https://platform.claude.com/docs/en/build-with-claude/effort) | 使用自适应思考；不额外提供关闭档位。 |
+| Anthropic | `claude-fable-5-1`<br>`claude-mythos-5-1`<br>`claude-fable-5`<br>`claude-mythos-5`<br>`claude-opus-5-5`<br>`claude-sonnet-5-5` | low / medium / high / xhigh / max | high | anthropic-messages | [官方1](https://platform.claude.com/docs/en/build-with-claude/effort) [官方2](https://platform.claude.com/docs/en/build-with-claude/thinking#configuring-thinking) | 不支持完整关闭思考。Sonnet 5.5 的 between_tools 仅关闭前置思考，因此不标为 off。 |
+| Anthropic | `claude-opus-5`<br>`claude-opus-4-8`<br>`claude-opus-4-7`<br>`claude-sonnet-5`<br>`claude-haiku-5-5` | off / low / medium / high / xhigh / max | high | anthropic-messages | [官方1](https://platform.claude.com/docs/en/build-with-claude/effort) [官方2](https://platform.claude.com/docs/en/build-with-claude/thinking#configuring-thinking) | off 发送 thinking.type = disabled，不附 output_config.effort。Opus 5 和 Haiku 5.5 禁止 disabled 与 xhigh / max 组合。 |
+| Anthropic | `claude-mythos-preview` | low / medium / high / max | high | anthropic-messages | [官方1](https://platform.claude.com/docs/en/build-with-claude/effort) [官方2](https://platform.claude.com/docs/en/build-with-claude/thinking#configuring-thinking) | 使用自适应思考；不支持关闭思考。 |
+| Anthropic | `claude-opus-4-6`<br>`claude-sonnet-4-6` | off / low / medium / high / max | high | anthropic-messages | [官方1](https://platform.claude.com/docs/en/build-with-claude/effort) [官方2](https://platform.claude.com/docs/en/build-with-claude/thinking#configuring-thinking) | off 发送 thinking.type = disabled；其余档位使用自适应思考。 |
 | OpenAI | `gpt-6-astra` | low / medium / high / xhigh / max | high | openai-responses | [官方1](https://developers.openai.com/api/docs/models/gpt-6-astra) | DSH 需要工具调用，因此仅自动适配 Responses。 |
 | OpenAI | `gpt-6.1-sol` | low / medium / high / xhigh / max | high | openai-responses | [官方1](https://developers.openai.com/api/docs/models/gpt-6.1-sol) | 工具调用需要 Responses；不支持 none / minimal。 |
 | OpenAI | `gpt-6-sol` | off / low / medium / high / xhigh / max | high | openai-responses | [官方1](https://developers.openai.com/api/docs/models/gpt-6-sol) | 带思考的工具调用需要 Responses。 |
