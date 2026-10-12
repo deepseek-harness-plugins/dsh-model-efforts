@@ -4,7 +4,6 @@ import {LEVELS, fields, matchModel, autoFields, applyFields, validateFields, cho
 import {rowBridge, observeModelRows} from './editor-bridge.js';
 import {createPreferences, PREFERENCE_KEY} from './preferences.js';
 import {EffortSettings} from './settings.jsx';
-import {installPicker} from './picker.jsx';
 import css from './styles.css';
 
 export const inject = ['slots'];
@@ -99,5 +98,4 @@ export function apply(ctx) {
     ctx.slots.register({name: 'settings.general.item', id: 'model-efforts', order: 20},
       () => <EffortSettings preferences={preferences}/>);
   });
-  installPicker(ctx, preferences);
 }

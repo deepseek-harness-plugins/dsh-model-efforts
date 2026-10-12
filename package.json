@@ -1,6 +1,6 @@
 {
   "name": "@deepseekharness-plugin/dsh-model-efforts",
-  "version": "0.4.9",
+  "version": "0.5.0",
   "description": "DeepSeek Harness 模型思考强度与默认档位配置插件",
   "type": "module",
   "license": "MIT",
@@ -37,7 +37,6 @@
       "inject": [
         "@deepseek-ai/dsh-client-ui-settings-models",
         "@deepseek-ai/dsh-client-ui-settings-general",
-        "@deepseek-ai/dsh-client-ui-model-selection",
         "@deepseek-ai/dsh-client-ui-primitives",
         "@deepseek-ai/dsh-client-ui-slots"
       ]
@@ -46,7 +45,7 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --test tests/*.test.mjs",
-    "test:ui": "node scripts/picker-state-test.mjs && node scripts/ui-test.mjs",
+    "test:ui": "node scripts/ui-test.mjs",
     "check": "npm run build && npm test && npm run test:ui"
   },
   "devDependencies": {
