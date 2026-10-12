@@ -103,6 +103,7 @@ try {
   const configPath = join(profile, 'cordis.patch.yml');
   await openEditor();
   let panel = await expand(0);
+  assert.equal(await panel.locator('.dme-chip').count(), 0);
   // Effort-only edits must dirty the native draft without an unrelated field.
   await panel.getByRole('button', {name: '自动匹配', exact: true}).click();
   await chips('claude-opus-5-5', 5);
@@ -155,8 +156,10 @@ try {
   await chips('claude-sonnet-4-6', 5);
   assert.equal(await sonnet.getByLabel('增加思考档位').locator('option[value="off"]').count(), 0);
   assert.equal(await sonnet.getByLabel('增加思考档位').locator('option[value="xhigh"]').isDisabled(), true);
+  await nativeRows.nth(1).getByLabel('模型 ID 2', {exact: true}).fill('claude-opus-5');
   await page.getByRole('button', {name: '取消', exact: true}).click();
   await page.locator('[class*="_editorRoute"]').waitFor({state: 'detached'});
+  await page.waitForTimeout(550);
   assert.equal(await readFile(configPath, 'utf8'), stored);
 
   // Capacities, rename, model addition/removal and effort declarations share Save.
@@ -170,8 +173,38 @@ try {
   await setDefault(custom, 'off');
   await nativeRows.nth(2).getByLabel('模型 ID 3', {exact: true}).fill('custom-renamed');
   await page.getByRole('button', {name: '添加模型', exact: true}).click();
-  await nativeRows.nth(3).getByLabel('模型 ID 4', {exact: true}).fill('claude-sonnet-5-5');
   sonnet = await expand(3);
+  const newId = nativeRows.nth(3).getByLabel('模型 ID 4', {exact: true});
+  // While the ID input remains focused, match the completed ID rather than
+  // the valid Sonnet 5 prefix. No manual matching or blur is involved.
+  await newId.fill('');
+  await newId.pressSequentially('claude-sonnet-5-5', {delay: 8});
+  await chips('claude-sonnet-5-5', 5);
+  assert.equal(await newId.evaluate(el => el === document.activeElement), true);
+  assert.equal(await sonnet.getByRole('group', {name: 'off 档位', exact: true}).count(), 0);
+  await sonnet.getByRole('button', {name: '删除 xhigh 档位'}).click();
+  await setDefault(sonnet, 'low');
+  await nativeRows.nth(3).getByRole('textbox').nth(1).fill('新模型');
+  await newId.fill('claude-sonnet-5-5');
+  await page.waitForTimeout(550);
+  assert.equal(await sonnet.locator('.dme-chip').count(), 4);
+  await assertDefaultLabel(sonnet, 'low');
+  await nativeRows.nth(3).getByRole('button', {name: /^模型选项/}).click();
+  sonnet = await expand(3);
+  assert.equal(await sonnet.locator('.dme-chip').count(), 4);
+  await sonnet.getByRole('button', {name: '重置', exact: true}).click();
+  await chips('claude-sonnet-5-5', 0);
+  await page.waitForTimeout(550);
+  assert.equal(await sonnet.locator('.dme-chip').count(), 0);
+  await newId.fill('claude-sonnet-5-6');
+  await page.waitForTimeout(550);
+  assert.equal(await sonnet.locator('.dme-chip').count(), 0);
+  assert.equal(await sonnet.getByRole('button', {name: '自动匹配', exact: true}).isDisabled(), true);
+  await newId.fill('claude-sonnet-5-5');
+  await chips('claude-sonnet-5-5', 5);
+  await assertDefaultLabel(sonnet, 'high');
+  await sonnet.getByRole('button', {name: '删除 low 档位'}).click();
+  // Keep the explicit action as a way to restore the catalog after manual edits.
   await sonnet.getByRole('button', {name: '自动匹配', exact: true}).click();
   await chips('claude-sonnet-5-5', 5);
   await setDefault(sonnet, 'xhigh');
@@ -246,11 +279,14 @@ try {
   await page.getByRole('button', {name: /^(模型|Models)$/}).click();
   await openEditor();
   await page.getByRole('button', {name: '添加模型', exact: true}).click();
-  await nativeRows.nth(3).getByLabel('模型 ID 4', {exact: true}).fill('claude-opus-5');
   await nativeRows.nth(3).getByRole('textbox').nth(1).fill('claude-opus-5');
+  await nativeRows.nth(3).getByLabel('模型 ID 4', {exact: true}).fill('claude-opus-5');
+  // Saving immediately flushes matching even with the model options collapsed.
+  await save();
+  await openEditor();
   const opus5 = await expand(3);
-  await opus5.getByRole('button', {name: '自动匹配', exact: true}).click();
   await chips('claude-opus-5', 6);
+  await assertDefaultLabel(opus5, 'high');
   await setDefault(opus5, 'xhigh');
   await nativeRows.nth(3).screenshot({path: join(artifacts, 'model-off.png')});
   await save();
@@ -286,7 +322,7 @@ try {
   await page.getByRole('menuitem', {name: /推理等级/}).click();
   assert.deepEqual(await page.getByRole('menuitemradio').allTextContents(), ['Default', 'Low', 'Medium', 'High', 'Xhigh', 'Max']);
   assert.equal(errors.length, 0, errors.join('\n'));
-  console.log('UI_TEST_PASSED', JSON.stringify({root, screenshots: artifacts, assertions: 'inline placement, text set-default button inside non-default tags only, default label and button visibility switch, native save/cancel/reset, per-model and default-only save, no Default with an explicit default, medium default request, explicit max override, off disabled request, known Claude Off support, Off overrides xhigh without leaking output_config, High re-enables adaptive thinking, Opus 5.5 excludes Off, plugin disable restores native Default, no page errors'}));
+  console.log('UI_TEST_PASSED', JSON.stringify({root, screenshots: artifacts, assertions: 'automatic matching while ID remains focused, complete IDs rather than prefixes, same-ID and model-name edits preserve customization, reset and fold preserve manual state, unknown ID does not match, immediate collapsed-row Save persists automatic efforts, pending match Cancel, manual match restores catalog, inline placement, native save/cancel/reset, per-model defaults, medium default request, explicit max override, Off overrides xhigh without leaking output_config, High re-enables adaptive thinking, Opus 5.5 excludes Off, plugin disable restores native Default, no page errors'}));
 } catch (e) {
   console.error('PAGE_ERRORS', errors);
   if (page) console.error('INLINE_DIAGNOSTIC', await page.evaluate(() => {

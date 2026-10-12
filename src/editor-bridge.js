@@ -1,4 +1,4 @@
-import {fields} from './core.js';
+import {fields, matchModel, autoFields, applyFields} from './core.js';
 
 // DSH 0.2.0-rc.2 exposes a page footer slot but no ModelRow draft slot.
 // Keep this version-specific adapter in one file. It calls the existing row's
@@ -39,8 +39,40 @@ export function rowBridge(element) {
 
 export function observeModelRows(scope, render) {
   const mounted = new Map(), originals = new WeakMap();
+  const editIds = new WeakMap(), pendingMatches = new Map();
   let frame = 0, serial = 0, last = '';
   const refresh = () => {if (!frame) frame = requestAnimationFrame(scan);};
+  const idRow = target => {
+    const element = target.closest?.('[class*="_modelEntry"]');
+    return element?.querySelector('input') === target ? element : null;
+  };
+  const matchEditedId = element => {
+    clearTimeout(pendingMatches.get(element)); pendingMatches.delete(element);
+    const bridge = rowBridge(element);
+    if (!bridge || bridge.disabled) return;
+    const previous = editIds.get(element);
+    editIds.set(element, bridge.model.id);
+    if (previous === undefined || previous === bridge.model.id) return;
+    const matched = matchModel(bridge.model.id, bridge.provider);
+    if (!matched) return;
+    bridge.onChange(applyFields(bridge.model, autoFields(matched, bridge.provider.api)));
+    refresh();
+  };
+  const beginIdEdit = event => {
+    const element = idRow(event.target), bridge = element && rowBridge(element);
+    if (bridge) editIds.set(element, bridge.model.id);
+  };
+  const input = event => {
+    const element = idRow(event.target);
+    if (element) {
+      clearTimeout(pendingMatches.get(element)); pendingMatches.delete(element);
+      // A short pause avoids matching a valid prefix while its ID is still
+      // being typed. Blur flushes the match before the native Save click.
+      if (!event.isComposing) pendingMatches.set(element, setTimeout(() => matchEditedId(element), 400));
+    }
+    refresh();
+  };
+  const finishIdEdit = event => {const element = idRow(event.target); if (element) matchEditedId(element);};
   const scan = () => {
     frame = 0;
     const rows = [], live = new Set();
@@ -68,11 +100,14 @@ export function observeModelRows(scope, render) {
   };
   const observer = new MutationObserver(refresh);
   observer.observe(scope, {subtree: true, childList: true, attributes: true, attributeFilter: ['disabled']});
-  scope.addEventListener('input', refresh, true); scope.addEventListener('change', refresh, true);
+  scope.addEventListener('focusin', beginIdEdit, true); scope.addEventListener('focusout', finishIdEdit, true);
+  scope.addEventListener('input', input, true); scope.addEventListener('change', refresh, true);
   scan();
   return () => {
     observer.disconnect(); cancelAnimationFrame(frame);
-    scope.removeEventListener('input', refresh, true); scope.removeEventListener('change', refresh, true);
+    scope.removeEventListener('focusin', beginIdEdit, true); scope.removeEventListener('focusout', finishIdEdit, true);
+    scope.removeEventListener('input', input, true); scope.removeEventListener('change', refresh, true);
+    for (const timer of pendingMatches.values()) clearTimeout(timer);
     for (const seat of mounted.values()) seat.mount.remove();
   };
 }
