@@ -1,6 +1,6 @@
 {
   "name": "@deepseekharness-plugin/dsh-model-efforts",
-  "version": "0.3.7",
+  "version": "0.4.3",
   "description": "DeepSeek Harness 模型思考强度与默认档位配置插件",
   "type": "module",
   "license": "MIT",
@@ -36,6 +36,9 @@
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-ui-settings-models",
+        "@deepseek-ai/dsh-client-ui-settings-general",
+        "@deepseek-ai/dsh-client-ui-model-selection",
+        "@deepseek-ai/dsh-client-ui-primitives",
         "@deepseek-ai/dsh-client-ui-slots"
       ]
     }

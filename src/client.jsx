@@ -1,7 +1,10 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {createPortal} from 'react-dom';
 import {LEVELS, fields, matchModel, autoFields, applyFields, validateFields, chooseDefault} from './core.js';
 import {rowBridge, observeModelRows} from './editor-bridge.js';
+import {createPreferences, PREFERENCE_KEY} from './preferences.js';
+import {EffortSettings} from './settings.jsx';
+import {installPicker} from './picker.jsx';
 import css from './styles.css';
 
 export const inject = ['slots'];
@@ -81,7 +84,20 @@ function InlineEfforts() {
 export function apply(ctx) {
   const style = document.createElement('style'); style.textContent = css; document.head.append(style);
   ctx.effect(() => () => style.remove());
+  const preferences = createPreferences(window.localStorage);
+  const reload = event => {if (event.key === PREFERENCE_KEY || event.key === null) preferences.reload();};
+  window.addEventListener('storage', reload);
+  ctx.effect(() => () => window.removeEventListener('storage', reload));
+  function Footer() {
+    const settings = useSyncExternalStore(preferences.subscribe, preferences.getSnapshot);
+    return settings.effortEditor ? <InlineEfforts/> : null;
+  }
   ctx.slots.inject('settings.models.footer', () => {
-    ctx.slots.register({name: 'settings.models.footer', id: 'model-efforts'}, InlineEfforts);
+    ctx.slots.register({name: 'settings.models.footer', id: 'model-efforts'}, Footer);
   });
+  ctx.slots.inject('settings.general.item', () => {
+    ctx.slots.register({name: 'settings.general.item', id: 'model-efforts', order: 20},
+      () => <EffortSettings preferences={preferences}/>);
+  });
+  installPicker(ctx, preferences);
 }

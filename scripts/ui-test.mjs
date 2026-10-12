@@ -50,7 +50,7 @@ try {
   }
   if (!url) throw new Error('DSH 启动超时：' + log);
   browser = await chromium.launch({channel: process.env.DME_BROWSER ?? 'chrome', headless: true});
-  page = await browser.newPage({viewport: {width: 1180, height: 900}, locale: 'zh-CN'});
+  page = await browser.newPage({viewport: {width: 1180, height: 900}, deviceScaleFactor: 2, locale: 'zh-CN'});
   page.on('pageerror', e => errors.push(e.message));
   page.setDefaultTimeout(12000);
   await page.goto(url, {waitUntil: 'domcontentloaded'});
@@ -288,7 +288,7 @@ try {
     const before = requests.length;
     const replies = await page.evaluate(() => [...document.querySelectorAll('body *')].filter(el => el.children.length === 0 && el.textContent === '本地测试已收到思考档位。').length);
     await page.locator('[contenteditable=true]').fill(text);
-    await page.locator('[contenteditable=true]').press('Enter');
+    await page.getByRole('button', {name: '发送消息', exact: true}).click();
     await page.waitForFunction(count => [...document.querySelectorAll('body *')].filter(el => el.children.length === 0 && el.textContent === '本地测试已收到思考档位。').length >= count, replies + 1);
     assert.equal(requests.length, before + 1);
   };
@@ -352,6 +352,167 @@ try {
   await send('确认从 off 切回 high 重新启用思考');
   assert.equal(requests.at(-1).thinking.type, 'adaptive');
   assert.equal(requests.at(-1).output_config.effort, 'high');
+
+  // Style controls use DSH's shared directory and session.selectModel path.
+  const setStyle = async style => {
+    await settingsButton.click();
+    await page.getByRole('button', {name: '通用设置', exact: true}).click();
+    await page.getByRole('radio', {name: style, exact: true}).check();
+    await page.getByRole('button', {name: '关闭', exact: true}).click();
+  };
+  await setStyle('Codex');
+  const pickerTrigger = page.locator('.dme-picker-trigger');
+  const pickerPopup = page.locator('.dme-picker-panel');
+  const screenshotPopup = async name => {
+    await pickerPopup.evaluate(async el => {
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      await Promise.all(el.getAnimations({subtree: true}).filter(animation => animation.effect.getTiming().iterations !== Infinity)
+        .map(animation => animation.finished.catch(() => {})));
+    });
+    await pickerPopup.screenshot({path: join(artifacts, name)});
+  };
+  const slider = page.getByRole('slider', {name: '思考强度', exact: true});
+  await pickerTrigger.click();
+  assert.equal(await pickerPopup.evaluate(el => getComputedStyle(el).cornerShape), 'superellipse(1)');
+  assert.equal(await page.locator('.dme-slider-thumb').evaluate(el => getComputedStyle(el).cornerShape), 'superellipse(1)');
+  assert.equal(await pickerPopup.evaluate(el => getComputedStyle(el).borderRadius), '18px');
+  assert.equal(await slider.getAttribute('max'), '5'); // off + five Opus 5 levels
+  assert.equal(await slider.getAttribute('aria-valuetext'), 'high');
+  await slider.press('End');
+  await page.waitForFunction(() => document.querySelector('.dme-trigger-effort')?.textContent === 'max');
+  await page.locator('.dme-codex-effort[data-highest]').waitFor();
+  assert.equal(await page.locator('.dme-particles i').count(), 18);
+  assert.equal(await page.locator('.dme-effort-title').innerText(), 'max');
+  assert.doesNotMatch(await pickerPopup.innerText(), /ultra/i);
+  const animation = await page.locator('.dme-particles i').first().evaluate(el => getComputedStyle(el).transform);
+  await page.waitForTimeout(150);
+  assert.notEqual(await page.locator('.dme-particles i').first().evaluate(el => getComputedStyle(el).transform), animation);
+  await screenshotPopup('codex-max.png');
+  await slider.press('ArrowLeft');
+  await page.waitForFunction(() => document.querySelector('.dme-trigger-effort')?.textContent === 'xhigh');
+  assert.equal(await page.locator('.dme-particles').count(), 0);
+  await screenshotPopup('codex-effort.png');
+  await slider.press('Escape');
+  assert.equal(await pickerTrigger.evaluate(el => el === document.activeElement), true);
+  await send('Codex 选择器实际选择 xhigh');
+  assert.equal(requests.at(-1).output_config.effort, 'xhigh');
+  await pickerTrigger.click();
+  const smallHeight = (await pickerPopup.boundingBox()).height;
+  assert.equal(await pickerPopup.evaluate(el => getComputedStyle(el).overflowY), 'hidden');
+  assert.equal(await pickerPopup.evaluate(el => el.scrollHeight - el.clientHeight <= 1), true);
+  await page.locator('.dme-model-link').hover();
+  await page.waitForTimeout(140);
+  assert.equal(await page.locator('.dme-model-link').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(243, 243, 244)');
+  assert.equal(await page.locator('.dme-model-link .dme-effort-title').count(), 1);
+  await screenshotPopup('codex-hover.png');
+  await page.locator('.dme-model-link').click();
+  const anchors = await pickerPopup.evaluate(async el => {
+    const edges = [];
+    for (let n = 0; n < 12; n++) {
+      await new Promise(requestAnimationFrame);
+      const box = el.getBoundingClientRect(); edges.push(box.bottom);
+    }
+    return edges;
+  });
+  assert.equal(Math.max(...anchors) - Math.min(...anchors) < 1, true, 'model menu keeps its bottom edge fixed while expanding');
+  assert.equal(await pickerPopup.evaluate(el => getComputedStyle(el).transitionProperty.includes('height')), true);
+  assert.equal(await page.locator('.dme-picker-pane').evaluate(el => getComputedStyle(el).animationName), 'dme-pane-in');
+  await screenshotPopup('codex-models.png');
+  assert.equal(await pickerPopup.evaluate(el => getComputedStyle(el).borderRadius), '16px');
+  assert.equal((await pickerPopup.boundingBox()).height > smallHeight, true);
+  assert.equal(await pickerPopup.evaluate(el => el.scrollTop), 0);
+  await pickerPopup.getByRole('menuitemradio', {name: 'claude-opus-5-5', exact: true}).click();
+  await pickerTrigger.click();
+  assert.equal(await slider.getAttribute('max'), '4'); // no off and no Default
+  assert.equal(await page.locator('.dme-ticks i').count(), 5);
+  assert.equal(await slider.getAttribute('aria-valuetext'), 'medium');
+  const rail = await slider.boundingBox();
+  await page.mouse.move(rail.x + rail.width / 2, rail.y + rail.height / 2);
+  await page.mouse.down(); await page.mouse.move(rail.x + rail.width - 14, rail.y + rail.height / 2, {steps: 8});
+  await page.mouse.up();
+  await page.waitForFunction(() => document.querySelector('.dme-trigger-effort')?.textContent === 'max');
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  assert.equal(await page.locator('.dme-particles i').first().evaluate(el => getComputedStyle(el).animationName), 'none');
+  await page.emulateMedia({reducedMotion: 'no-preference'});
+  await slider.press('Escape');
+  await send('Codex 拖动最高档位为 max');
+  assert.equal(requests.at(-1).model, 'claude-opus-5-5'); assert.equal(requests.at(-1).output_config.effort, 'max');
+  // Model UI switch does not alter model configuration, and the editor is independent.
+  const beforePreferences = await readFile(configPath, 'utf8');
+  await settingsButton.click();
+  await page.getByRole('button', {name: '通用设置', exact: true}).click();
+  assert.equal(await page.getByRole('button', {name: '模型与思考强度', exact: true}).count(), 0);
+  assert.equal(await page.locator('.dme-settings h2').count(), 0);
+  await page.getByRole('switch', {name: '思考强度设置 UI', exact: true}).click();
+  assert.equal(await page.locator('.dme-setting-rows').evaluate(el => getComputedStyle(el).borderTopWidth), '0px');
+  await page.locator('.dme-settings').screenshot({path: join(artifacts, 'picker-options.png')});
+  await page.screenshot({path: join(artifacts, 'picker-settings.png')});
+  await page.getByRole('button', {name: /^(模型|Models)$/}).click(); await openEditor();
+  await nativeRows.first().getByRole('button', {name: /^模型选项/}).click();
+  assert.equal(await page.locator('.dme').count(), 0);
+  await page.getByRole('button', {name: '取消', exact: true}).click();
+  await page.getByRole('button', {name: '通用设置', exact: true}).click();
+  await page.getByRole('switch', {name: '思考强度设置 UI', exact: true}).click();
+  await page.locator('.dme-settings').screenshot({path: join(artifacts, 'picker-options.png')});
+  await page.getByRole('button', {name: '关闭', exact: true}).click();
+  assert.equal(await readFile(configPath, 'utf8'), beforePreferences);
+  await pickerTrigger.click();
+  await slider.press('Home');
+  await page.waitForFunction(() => document.querySelector('.dme-trigger-effort')?.textContent === 'low');
+  await slider.press('Escape');
+  await send('Codex 选择器 low'); assert.equal(requests.at(-1).output_config.effort, 'low');
+  await pickerTrigger.click(); await page.locator('.dme-model-link').click();
+  await pickerPopup.getByRole('menuitemradio', {name: 'claude-opus-5', exact: true}).click();
+  await pickerTrigger.click(); await slider.press('Home');
+  await page.waitForFunction(() => document.querySelector('.dme-trigger-effort')?.textContent === 'off');
+  await slider.press('Escape'); await send('Codex 选择器 off');
+  assert.equal(requests.at(-1).model, 'claude-opus-5'); assert.equal(requests.at(-1).thinking.type, 'disabled'); assert.equal(requests.at(-1).output_config, undefined);
+  await page.reload({waitUntil: 'domcontentloaded'});
+  await pickerTrigger.waitFor();
+  assert.equal(await pickerTrigger.getAttribute('class').then(value => value.includes('dme-picker-codex')), true);
+  await pickerTrigger.click(); await page.locator('.dme-model-link').click();
+  await pickerPopup.getByRole('menuitemradio').first().press('Escape');
+  assert.equal(await slider.count(), 1); // back to slider
+  await slider.press('Escape'); assert.equal(await pickerPopup.count(), 0);
+  await page.setViewportSize({width: 390, height: 760});
+  await pickerTrigger.click();
+  const popupBounds = await pickerPopup.boundingBox();
+  assert.equal(popupBounds.x >= 12 && popupBounds.x + popupBounds.width <= 378, true);
+  await page.evaluate(() => document.body.setAttribute('data-ds-dark-theme', ''));
+  assert.equal(await pickerPopup.evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(37, 37, 39)');
+  await screenshotPopup('codex-dark.png');
+  await page.evaluate(() => document.body.removeAttribute('data-ds-dark-theme'));
+  await slider.press('Escape'); await page.setViewportSize({width: 1180, height: 900});
+  await setStyle('DeepSeek 默认');
+  assert.equal(await pickerTrigger.count(), 0);
+  // Large catalogs are searchable; models without reasoning stay model-only.
+  await settingsButton.click();
+  await page.getByRole('button', {name: /^(模型|Models)$/}).click(); await openEditor();
+  for (let n = 0; n < 5; n++) {
+    await page.getByRole('button', {name: '添加模型', exact: true}).click();
+    const row = nativeRows.last();
+    await row.getByRole('textbox').first().fill('plain-model-' + n);
+    await row.getByRole('textbox').nth(1).fill('Plain model ' + n);
+  }
+  await save(); await page.getByRole('button', {name: '关闭', exact: true}).click();
+  await setStyle('Codex'); await pickerTrigger.click(); await page.locator('.dme-model-link').click();
+  await screenshotPopup('codex-large-catalog.png');
+  assert.equal((await pickerPopup.boundingBox()).height <= 360, true);
+  assert.equal(await pickerPopup.evaluate(el => getComputedStyle(el).scrollbarWidth), 'none');
+  assert.equal(await pickerPopup.evaluate(el => getComputedStyle(el, '::-webkit-scrollbar').display), 'none');
+  assert.equal(await pickerPopup.locator('.dme-model-name small').count(), await pickerPopup.getByRole('menuitemradio').count());
+  assert.equal(await pickerPopup.locator('.dme-model-name small').first().innerText(), '模型思考档位');
+  await pickerPopup.evaluate(el => el.scrollTop = el.scrollHeight);
+  const headerBounds = await page.locator('.dme-model-header').boundingBox();
+  const menuBounds = await pickerPopup.boundingBox();
+  assert.equal(headerBounds.y >= menuBounds.y && headerBounds.y < menuBounds.y + 12, true);
+  await page.getByRole('searchbox', {name: '搜索模型', exact: true}).fill('Plain model 4');
+  assert.equal(await pickerPopup.getByRole('menuitemradio').count(), 1);
+  await pickerPopup.getByRole('menuitemradio', {name: 'Plain model 4', exact: true}).click();
+  await pickerTrigger.click(); assert.equal(await slider.count(), 0);
+  await page.getByRole('searchbox', {name: '搜索模型', exact: true}).fill('claude-opus-5');
+  await pickerPopup.getByRole('menuitemradio', {name: 'claude-opus-5', exact: true}).click();
+  // Disabling the plugin restores native regardless of the Codex preference.
   await page.getByRole('button', {name: '插件', exact: true}).click();
   await page.getByRole('switch', {name: '启用 @deepseekharness-plugin/dsh-model-efforts', exact: true}).click();
   await page.getByText('新会话', {exact: true}).first().click();
@@ -362,7 +523,7 @@ try {
   await page.getByRole('menuitem', {name: /推理等级/}).click();
   assert.deepEqual(await page.getByRole('menuitemradio').allTextContents(), ['Default', 'Low', 'Medium', 'High', 'Xhigh', 'Max']);
   assert.equal(errors.length, 0, errors.join('\n'));
-  console.log('UI_TEST_PASSED', JSON.stringify({root, screenshots: artifacts, assertions: 'existing Haiku 5.5 auto-matches on editor open, multiple collapsed rows retain automatic matches on Save, initialization Cancel preserves file, explicit delete-all remains empty on reopen, initialization and typed-match Reset survive folding, automatic matching while ID remains focused, complete IDs rather than prefixes, same-ID and model-name edits preserve customization, unknown ID does not match, immediate collapsed-row Save persists automatic efforts, pending match Cancel, manual match restores catalog, inline placement, native save/cancel/reset, per-model defaults, medium default request, explicit max override, Off overrides xhigh without leaking output_config, High re-enables adaptive thinking, Opus 5.5 excludes Off, plugin disable restores native Default, no page errors'}));
+  console.log('UI_TEST_PASSED', JSON.stringify({root, screenshots: artifacts, assertions: 'automatic matching and native Save/Cancel/Reset regressions, per-model defaults and Off request mapping, native/Codex switching, round corners and animated pane height, keyboard and pointer selection through shared directory, animated highest tier without Ultra, reduced motion, independent editor toggle without config writes, preference reload, submenu Escape/focus restore, narrow viewport, dark theme, large catalog search, model-only picker without reasoning, plugin disable restores native Default, no page errors'}));
 } catch (e) {
   console.error('PAGE_ERRORS', errors);
   if (page) console.error('INLINE_DIAGNOSTIC', await page.evaluate(() => {
