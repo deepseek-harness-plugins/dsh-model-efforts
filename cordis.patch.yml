@@ -1,0 +1,3 @@
+- insert:
+    - id: model-efforts
+      name: "@deepseekharness-plugin/dsh-model-efforts"
