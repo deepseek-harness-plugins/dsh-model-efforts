@@ -84,9 +84,13 @@ try {
   const chips = async (id, count) => page.waitForFunction(({id, count}) => document.querySelector('[aria-label="' + id + ' 思考强度"]')?.querySelectorAll('.dme-chip').length === count, {id, count});
   const assertDefaultLabel = async (panel, level) => {
     assert.equal(await panel.locator('.dme-default').count(), 1);
-    const label = panel.getByRole('button', {name: '设 ' + level + ' 为默认档位'}).locator('.dme-default');
+    const label = panel.getByRole('button', {name: '选择 ' + level + ' 档位'}).locator('.dme-default');
     assert.equal(await label.isVisible(), true);
     assert.equal(await label.textContent(), 'default');
+  };
+  const setDefault = async (panel, level) => {
+    await panel.getByRole('button', {name: '选择 ' + level + ' 档位'}).click();
+    await panel.getByRole('button', {name: '设为默认', exact: true}).click();
   };
   const configPath = join(profile, 'cordis.patch.yml');
   await openEditor();
@@ -94,26 +98,34 @@ try {
   // Effort-only edits must dirty the native draft without an unrelated field.
   await panel.getByRole('button', {name: '自动匹配', exact: true}).click();
   await chips('claude-opus-5-5', 5);
-  assert.equal(await panel.getByRole('button', {name: '设 high 为默认档位'}).getAttribute('aria-pressed'), 'true');
+  assert.equal(await panel.getByRole('button', {name: '选择 high 档位'}).getAttribute('aria-pressed'), 'true');
   await assertDefaultLabel(panel, 'high');
+  assert.equal(await panel.getByRole('button', {name: '设为默认', exact: true}).isDisabled(), true);
+  await panel.getByRole('button', {name: '选择 low 档位'}).click();
+  await assertDefaultLabel(panel, 'high');
+  assert.equal(await panel.getByRole('button', {name: '设为默认', exact: true}).isEnabled(), true);
   assert.equal(await panel.getByLabel('增加思考档位').locator('option[value="off"]').isDisabled(), true);
   await panel.getByRole('button', {name: '删除 xhigh 档位'}).click();
   await chips('claude-opus-5-5', 4);
   await panel.getByLabel('增加思考档位').selectOption('xhigh');
   await panel.getByRole('button', {name: '重置', exact: true}).click();
   await chips('claude-opus-5-5', 0);
+  assert.equal(await panel.getByRole('button', {name: '设为默认', exact: true}).isDisabled(), true);
   await panel.getByRole('button', {name: '自动匹配', exact: true}).click();
-  await panel.getByRole('button', {name: '设 low 为默认档位'}).click();
+  await setDefault(panel, 'low');
   await nativeRows.nth(0).getByRole('button', {name: /^模型选项/}).click();
   panel = await expand(0);
   assert.equal(await panel.locator('.dme-chip').count(), 5);
   const layout = await nativeRows.first().locator('[class*="_modelAdvanced"]').evaluate(el => [...el.children].map(n => n.tagName + ':' + n.className));
   assert.match(layout[0], /^LABEL:/); assert.match(layout[1], /^LABEL:/);
   assert.match(layout[2], /dme-mount/); assert.match(layout[3], /^FIELDSET:/);
-  assert.equal(await panel.getByRole('button').count(), 12);
-  assert.equal(await panel.getByRole('button', {name: '设 low 为默认档位'}).getAttribute('aria-pressed'), 'true');
+  assert.equal(await panel.getByRole('button').count(), 13);
+  assert.equal(await panel.getByRole('button', {name: '选择 low 档位'}).getAttribute('aria-pressed'), 'true');
   await assertDefaultLabel(panel, 'low');
   assert.equal(await panel.locator('p, details, input, a').count(), 0);
+  await panel.getByRole('button', {name: '选择 medium 档位'}).click();
+  await assertDefaultLabel(panel, 'low');
+  assert.equal(await panel.getByRole('button', {name: '设为默认', exact: true}).isEnabled(), true);
   await nativeRows.first().screenshot({path: join(artifacts, 'model-efforts.png')});
   await page.screenshot({path: join(artifacts, 'host-model-efforts.png')});
   await save();
@@ -124,7 +136,7 @@ try {
   // A default-only change must persist and refresh the catalog too.
   await openEditor();
   panel = await expand(0);
-  await panel.getByRole('button', {name: '设 medium 为默认档位'}).click();
+  await setDefault(panel, 'medium');
   await save();
   stored = await readFile(configPath, 'utf8');
   assert.match(stored, /defaultReasoningEffort: medium/);
@@ -136,9 +148,9 @@ try {
   await panel.getByRole('button', {name: '删除 max 档位'}).click();
   await panel.getByRole('button', {name: '重置', exact: true}).click();
   await chips('claude-opus-5-5', 5);
-  assert.equal(await panel.getByRole('button', {name: '设 medium 为默认档位'}).getAttribute('aria-pressed'), 'true');
+  assert.equal(await panel.getByRole('button', {name: '选择 medium 档位'}).getAttribute('aria-pressed'), 'true');
   await assertDefaultLabel(panel, 'medium');
-  await panel.getByRole('button', {name: '设 max 为默认档位'}).click();
+  await setDefault(panel, 'max');
   await nativeRows.nth(0).getByLabel('最大输出 token 数 1', {exact: true}).fill('64K');
   let sonnet = await expand(1);
   await sonnet.getByRole('button', {name: '自动匹配', exact: true}).click();
@@ -156,19 +168,19 @@ try {
   assert.equal(await custom.getByRole('button', {name: '自动匹配', exact: true}).isDisabled(), true);
   await custom.getByLabel('增加思考档位').selectOption('high');
   await custom.getByLabel('增加思考档位').selectOption('off');
-  await custom.getByRole('button', {name: '设 off 为默认档位'}).click();
+  await setDefault(custom, 'off');
   await nativeRows.nth(2).getByLabel('模型 ID 3', {exact: true}).fill('custom-renamed');
   await page.getByRole('button', {name: '添加模型', exact: true}).click();
   await nativeRows.nth(3).getByLabel('模型 ID 4', {exact: true}).fill('claude-sonnet-5-5');
   sonnet = await expand(3);
   await sonnet.getByRole('button', {name: '自动匹配', exact: true}).click();
   await chips('claude-sonnet-5-5', 5);
-  await sonnet.getByRole('button', {name: '设 xhigh 为默认档位'}).click();
+  await setDefault(sonnet, 'xhigh');
   await nativeRows.nth(1).getByRole('button', {name: /^移除模型|^删除模型/}).click();
   await page.waitForFunction(() => document.querySelectorAll('[class*="_modelEntry"]').length === 3);
   const renamed = await expand(1);
   assert.equal(await renamed.locator('.dme-chip').count(), 2);
-  assert.equal(await renamed.getByRole('button', {name: '设 off 为默认档位'}).getAttribute('aria-pressed'), 'true');
+  assert.equal(await renamed.getByRole('button', {name: '选择 off 档位'}).getAttribute('aria-pressed'), 'true');
   assert.equal(await renamed.getAttribute('aria-label'), 'custom-renamed 思考强度');
   sonnet = await expand(2);
   assert.equal(await sonnet.locator('.dme-chip').count(), 5);
