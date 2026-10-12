@@ -102,7 +102,7 @@ function EffortSlider({levels, effort, busy, onSelect, modelName, onModels}) {
       <div className="dme-slider-position" aria-hidden="true"><div ref={thumb} className="dme-slider-thumb"/></div>
       <input type="range" aria-label="思考强度" aria-valuetext={selected.label} min="0" max={levels.length - 1} step="1" value={index}
         disabled={busy || levels.length < 2}
-        style={{cursor: busy || levels.length < 2 ? 'default' : isDragging ? 'grabbing' : hoveredTick !== null ? 'pointer' : thumbHovered ? 'grab' : 'default'}}
+        style={{cursor: busy || levels.length < 2 ? 'default' : isDragging ? 'grabbing' : hoveredTick !== null ? 'pointer' : thumbHovered ? 'pointer' : 'default'}}
         onPointerMove={e => {
           const bounds = e.currentTarget.getBoundingClientRect(), x = e.clientX - bounds.left;
           const tick = Math.round((x - 14) / (bounds.width - 28) * (levels.length - 1));

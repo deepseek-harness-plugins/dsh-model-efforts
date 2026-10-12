@@ -523,7 +523,7 @@ try {
   await page.mouse.move(thumbBox.x + thumbBox.width / 2, thumbBox.y + thumbBox.height / 2);
   await page.waitForTimeout(700);
   assert.equal(Math.abs((await page.locator('.dme-slider-thumb').boundingBox()).width - 32) < .1, true);
-  assert.equal(await slider.evaluate(el => getComputedStyle(el).cursor), 'grab');
+  assert.equal(await slider.evaluate(el => getComputedStyle(el).cursor), 'pointer');
   await screenshotPopup('codex-thumb-hover.png');
   await page.mouse.move(thumbBox.x + thumbBox.width / 2, thumbBox.y + thumbBox.height / 2);
   await page.mouse.down();
@@ -532,6 +532,9 @@ try {
   await page.mouse.move(rail.x + rail.width - 14, rail.y + rail.height / 2, {steps: 8});
   await page.mouse.up();
   await page.waitForFunction(() => document.querySelector('.dme-trigger-effort')?.textContent === 'max');
+  const releasedThumb = await page.locator('.dme-slider-thumb').boundingBox();
+  await page.mouse.move(releasedThumb.x + releasedThumb.width / 2, releasedThumb.y + releasedThumb.height / 2);
+  assert.equal(await slider.evaluate(el => getComputedStyle(el).cursor), 'pointer', 'releasing the thumb restores the pointer cursor');
   await page.emulateMedia({reducedMotion: 'reduce'});
   assert.equal(await page.locator('.dme-particles i').first().evaluate(el => getComputedStyle(el).animationName), 'none');
   assert.equal(await page.locator('.dme-max-fill').evaluate(el => getComputedStyle(el).animationName), 'none');
