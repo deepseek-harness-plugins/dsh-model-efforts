@@ -1,7 +1,7 @@
 {
   "name": "@deepseekharness-plugin/dsh-model-efforts",
   "version": "0.3.1",
-  "description": "只补充模型思考档位配置：官方目录、增删、自动匹配、重置",
+  "description": "DeepSeek Harness 模型思考强度与默认档位配置插件",
   "type": "module",
   "license": "MIT",
   "repository": {
