@@ -83,14 +83,23 @@ try {
   };
   const chips = async (id, count) => page.waitForFunction(({id, count}) => document.querySelector('[aria-label="' + id + ' 思考强度"]')?.querySelectorAll('.dme-chip').length === count, {id, count});
   const assertDefaultLabel = async (panel, level) => {
+    const button = panel.getByRole('button', {name: '设 ' + level + ' 为默认档位'});
+    const chip = button.locator('..');
+    const label = chip.locator('.dme-default');
+    await label.waitFor({state: 'visible'});
     assert.equal(await panel.locator('.dme-default').count(), 1);
-    const label = panel.getByRole('button', {name: '选择 ' + level + ' 档位'}).locator('.dme-default');
     assert.equal(await label.isVisible(), true);
     assert.equal(await label.textContent(), 'default');
+    assert.equal(await button.getAttribute('aria-pressed'), 'true');
+    assert.equal(await button.textContent(), '★');
+    assert.equal(await panel.locator('.dme-set-default[aria-pressed="true"]').count(), 1);
+    assert.equal(await panel.locator('.dme-set-default[aria-pressed="false"]').allTextContents().then(values => values.every(value => value === '☆')), true);
+    assert.equal(await panel.locator('.dme-set-default').count(), await panel.locator('.dme-chip').count());
+    assert.equal(await panel.getByRole('button', {name: '设为默认', exact: true}).count(), 0);
   };
   const setDefault = async (panel, level) => {
-    await panel.getByRole('button', {name: '选择 ' + level + ' 档位'}).click();
-    await panel.getByRole('button', {name: '设为默认', exact: true}).click();
+    await panel.getByRole('button', {name: '设 ' + level + ' 为默认档位'}).click();
+    await assertDefaultLabel(panel, level);
   };
   const configPath = join(profile, 'cordis.patch.yml');
   await openEditor();
@@ -98,19 +107,16 @@ try {
   // Effort-only edits must dirty the native draft without an unrelated field.
   await panel.getByRole('button', {name: '自动匹配', exact: true}).click();
   await chips('claude-opus-5-5', 5);
-  assert.equal(await panel.getByRole('button', {name: '选择 high 档位'}).getAttribute('aria-pressed'), 'true');
   await assertDefaultLabel(panel, 'high');
-  assert.equal(await panel.getByRole('button', {name: '设为默认', exact: true}).isDisabled(), true);
-  await panel.getByRole('button', {name: '选择 low 档位'}).click();
+  await setDefault(panel, 'high');
   await assertDefaultLabel(panel, 'high');
-  assert.equal(await panel.getByRole('button', {name: '设为默认', exact: true}).isEnabled(), true);
   assert.equal(await panel.getByLabel('增加思考档位').locator('option[value="off"]').isDisabled(), true);
   await panel.getByRole('button', {name: '删除 xhigh 档位'}).click();
   await chips('claude-opus-5-5', 4);
   await panel.getByLabel('增加思考档位').selectOption('xhigh');
   await panel.getByRole('button', {name: '重置', exact: true}).click();
   await chips('claude-opus-5-5', 0);
-  assert.equal(await panel.getByRole('button', {name: '设为默认', exact: true}).isDisabled(), true);
+  assert.equal(await panel.locator('.dme-set-default').count(), 0);
   await panel.getByRole('button', {name: '自动匹配', exact: true}).click();
   await setDefault(panel, 'low');
   await nativeRows.nth(0).getByRole('button', {name: /^模型选项/}).click();
@@ -119,13 +125,9 @@ try {
   const layout = await nativeRows.first().locator('[class*="_modelAdvanced"]').evaluate(el => [...el.children].map(n => n.tagName + ':' + n.className));
   assert.match(layout[0], /^LABEL:/); assert.match(layout[1], /^LABEL:/);
   assert.match(layout[2], /dme-mount/); assert.match(layout[3], /^FIELDSET:/);
-  assert.equal(await panel.getByRole('button').count(), 13);
-  assert.equal(await panel.getByRole('button', {name: '选择 low 档位'}).getAttribute('aria-pressed'), 'true');
+  assert.equal(await panel.getByRole('button').count(), 12);
   await assertDefaultLabel(panel, 'low');
   assert.equal(await panel.locator('p, details, input, a').count(), 0);
-  await panel.getByRole('button', {name: '选择 medium 档位'}).click();
-  await assertDefaultLabel(panel, 'low');
-  assert.equal(await panel.getByRole('button', {name: '设为默认', exact: true}).isEnabled(), true);
   await nativeRows.first().screenshot({path: join(artifacts, 'model-efforts.png')});
   await page.screenshot({path: join(artifacts, 'host-model-efforts.png')});
   await save();
@@ -148,7 +150,6 @@ try {
   await panel.getByRole('button', {name: '删除 max 档位'}).click();
   await panel.getByRole('button', {name: '重置', exact: true}).click();
   await chips('claude-opus-5-5', 5);
-  assert.equal(await panel.getByRole('button', {name: '选择 medium 档位'}).getAttribute('aria-pressed'), 'true');
   await assertDefaultLabel(panel, 'medium');
   await setDefault(panel, 'max');
   await nativeRows.nth(0).getByLabel('最大输出 token 数 1', {exact: true}).fill('64K');
@@ -180,7 +181,7 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('[class*="_modelEntry"]').length === 3);
   const renamed = await expand(1);
   assert.equal(await renamed.locator('.dme-chip').count(), 2);
-  assert.equal(await renamed.getByRole('button', {name: '选择 off 档位'}).getAttribute('aria-pressed'), 'true');
+  await assertDefaultLabel(renamed, 'off');
   assert.equal(await renamed.getAttribute('aria-label'), 'custom-renamed 思考强度');
   sonnet = await expand(2);
   assert.equal(await sonnet.locator('.dme-chip').count(), 5);
@@ -249,7 +250,7 @@ try {
   await page.getByRole('menuitem', {name: /推理等级/}).click();
   assert.deepEqual(await page.getByRole('menuitemradio').allTextContents(), ['Default', 'Low', 'Medium', 'High', 'Xhigh', 'Max']);
   assert.equal(errors.length, 0, errors.join('\n'));
-  console.log('UI_TEST_PASSED', JSON.stringify({root, screenshots: artifacts, assertions: 'inline placement, native save/cancel/reset, per-model and default-only save, no Default with an explicit default, medium default request, explicit max override, off disabled request, plugin disable restores native Default, no page errors'}));
+  console.log('UI_TEST_PASSED', JSON.stringify({root, screenshots: artifacts, assertions: 'inline placement, one-click star button inside each tag, default label and star state, native save/cancel/reset, per-model and default-only save, no Default with an explicit default, medium default request, explicit max override, off disabled request, plugin disable restores native Default, no page errors'}));
 } catch (e) {
   console.error('PAGE_ERRORS', errors);
   if (page) console.error('INLINE_DIAGNOSTIC', await page.evaluate(() => {

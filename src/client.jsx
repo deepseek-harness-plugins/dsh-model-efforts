@@ -9,12 +9,9 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 function EffortRow({row}) {
   const [error, setError] = useState('');
-  const [selection, setSelection] = useState(null);
   const entry = matchModel(row.id, row.provider);
   const draft = row.fields;
   const active = Object.keys(draft.reasoningEfforts || {});
-  const selected = active.includes(selection) ? selection : active.includes(draft.defaultReasoningEffort)
-    ? draft.defaultReasoningEffort : LEVELS.find(k => active.includes(k));
   const allowed = entry?.levels ?? LEVELS;
   const change = update => {
     try {
@@ -48,24 +45,26 @@ function EffortRow({row}) {
   const match = () => {
     const current = rowBridge(row.element);
     const matched = current && matchModel(current.model.id, current.provider);
-    if (matched) {setSelection(null); change(autoFields(matched, current.provider.api));}
+    if (matched) change(autoFields(matched, current.provider.api));
   };
   return <div className="dme" aria-label={row.id + ' 思考强度'}>
     <div className="dme-heading"><span>思考强度</span><div className="dme-actions">
       <button type="button" disabled={row.disabled || !entry} onClick={match}>自动匹配</button>
-      <button type="button" disabled={row.disabled || same(draft, row.baseline)} onClick={() => {setSelection(null); change(row.baseline);}}>重置</button>
+      <button type="button" disabled={row.disabled || same(draft, row.baseline)} onClick={() => change(row.baseline)}>重置</button>
     </div></div>
     <div className="dme-chips" aria-label="已配置的思考档位">
-      {LEVELS.filter(k => active.includes(k)).map(k => <span className="dme-chip" key={k} data-selected={selected === k || undefined}>
-        <button className="dme-level" type="button" disabled={row.disabled} aria-label={'选择 ' + k + ' 档位'} aria-pressed={selected === k}
-          title={draft.defaultReasoningEffort === k ? '默认档位' : '选择档位'} onClick={() => setSelection(k)}>
+      {LEVELS.filter(k => active.includes(k)).map(k => <span className="dme-chip" key={k} data-default={draft.defaultReasoningEffort === k || undefined}>
+        <span className="dme-level">
           {k}{draft.defaultReasoningEffort === k && <span className="dme-default">default</span>}
+        </span>
+        <button className="dme-set-default" type="button" disabled={row.disabled} aria-label={'设 ' + k + ' 为默认档位'} aria-pressed={draft.defaultReasoningEffort === k}
+          title={draft.defaultReasoningEffort === k ? '默认档位' : '设为默认'}
+          onClick={() => change((_current, latest) => ({...latest, defaultReasoningEffort: k}))}>
+          <span aria-hidden="true">{draft.defaultReasoningEffort === k ? '★' : '☆'}</span>
         </button>
         <button type="button" disabled={row.disabled} aria-label={'删除 ' + k + ' 档位'} onClick={() => remove(k)}>×</button>
       </span>)}
-      <button className="dme-set-default" type="button" disabled={row.disabled || !selected || selected === draft.defaultReasoningEffort}
-        onClick={() => change((_current, latest) => ({...latest, defaultReasoningEffort: selected}))}>设为默认</button>
-      <select className="dme-add" aria-label="增加思考档位" disabled={row.disabled} value="" onChange={e => {add(e.target.value); setSelection(e.target.value);}}>
+      <select className="dme-add" aria-label="增加思考档位" disabled={row.disabled} value="" onChange={e => add(e.target.value)}>
         <option value="" disabled>＋ 添加档位</option>
         {LEVELS.filter(k => !active.includes(k)).map(k => <option key={k} value={k} disabled={!allowed.includes(k) || k === 'off' && !active.length}>{k}</option>)}
       </select>
