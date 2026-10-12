@@ -82,6 +82,12 @@ try {
     await page.locator('[class*="_editorRoute"]').waitFor({state: 'detached'});
   };
   const chips = async (id, count) => page.waitForFunction(({id, count}) => document.querySelector('[aria-label="' + id + ' 思考强度"]')?.querySelectorAll('.dme-chip').length === count, {id, count});
+  const assertDefaultLabel = async (panel, level) => {
+    assert.equal(await panel.locator('.dme-default').count(), 1);
+    const label = panel.getByRole('button', {name: '设 ' + level + ' 为默认档位'}).locator('.dme-default');
+    assert.equal(await label.isVisible(), true);
+    assert.equal(await label.textContent(), 'default');
+  };
   const configPath = join(profile, 'cordis.patch.yml');
   await openEditor();
   let panel = await expand(0);
@@ -89,6 +95,7 @@ try {
   await panel.getByRole('button', {name: '自动匹配', exact: true}).click();
   await chips('claude-opus-5-5', 5);
   assert.equal(await panel.getByRole('button', {name: '设 high 为默认档位'}).getAttribute('aria-pressed'), 'true');
+  await assertDefaultLabel(panel, 'high');
   assert.equal(await panel.getByLabel('增加思考档位').locator('option[value="off"]').isDisabled(), true);
   await panel.getByRole('button', {name: '删除 xhigh 档位'}).click();
   await chips('claude-opus-5-5', 4);
@@ -105,6 +112,7 @@ try {
   assert.match(layout[2], /dme-mount/); assert.match(layout[3], /^FIELDSET:/);
   assert.equal(await panel.getByRole('button').count(), 12);
   assert.equal(await panel.getByRole('button', {name: '设 low 为默认档位'}).getAttribute('aria-pressed'), 'true');
+  await assertDefaultLabel(panel, 'low');
   assert.equal(await panel.locator('p, details, input, a').count(), 0);
   await nativeRows.first().screenshot({path: join(artifacts, 'model-efforts.png')});
   await page.screenshot({path: join(artifacts, 'host-model-efforts.png')});
@@ -124,10 +132,12 @@ try {
   await openEditor();
   panel = await expand(0);
   assert.equal(await panel.locator('.dme-chip').count(), 5);
+  await assertDefaultLabel(panel, 'medium');
   await panel.getByRole('button', {name: '删除 max 档位'}).click();
   await panel.getByRole('button', {name: '重置', exact: true}).click();
   await chips('claude-opus-5-5', 5);
   assert.equal(await panel.getByRole('button', {name: '设 medium 为默认档位'}).getAttribute('aria-pressed'), 'true');
+  await assertDefaultLabel(panel, 'medium');
   await panel.getByRole('button', {name: '设 max 为默认档位'}).click();
   await nativeRows.nth(0).getByLabel('最大输出 token 数 1', {exact: true}).fill('64K');
   let sonnet = await expand(1);

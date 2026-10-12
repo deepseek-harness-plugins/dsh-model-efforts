@@ -55,8 +55,8 @@ function EffortRow({row}) {
     <div className="dme-chips" aria-label="已配置的思考档位">
       {LEVELS.filter(k => active.includes(k)).map(k => <span className="dme-chip" key={k}>
         <button className="dme-level" type="button" disabled={row.disabled} aria-label={'设 ' + k + ' 为默认档位'} aria-pressed={draft.defaultReasoningEffort === k}
-          title="设为默认" onClick={() => change((_current, latest) => ({...latest, defaultReasoningEffort: k}))}>
-          {draft.defaultReasoningEffort === k && <span className="dme-dot" aria-hidden="true"/>}{k}
+          title={draft.defaultReasoningEffort === k ? '默认档位' : '设为默认'} onClick={() => change((_current, latest) => ({...latest, defaultReasoningEffort: k}))}>
+          {k}{draft.defaultReasoningEffort === k && <span className="dme-default">default</span>}
         </button>
         <button type="button" disabled={row.disabled} aria-label={'删除 ' + k + ' 档位'} onClick={() => remove(k)}>×</button>
       </span>)}
