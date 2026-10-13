@@ -60,7 +60,7 @@ try {
   console.log('HOST_STARTED', 'BODY', (await page.locator('body').innerText()).slice(0, 3000));
   await page.getByRole('button', {name: '插件', exact: true}).click();
   console.log('PLUGIN_PAGE', (await page.locator('body').innerText()).slice(-3500));
-  await page.getByRole('switch', {name: '启用 @deepseekharness-plugin/dsh-model-efforts', exact: true}).click();
+  await page.locator('[data-plugin-package="@deepseekharness-plugin/dsh-model-efforts"]').getByRole('switch').click();
   const settingsButton = page.getByRole('button', {name: /设置|Settings/i}).first();
   await settingsButton.click();
   await page.getByRole('button', {name: /^(模型|Models)$/}).click();
@@ -373,7 +373,7 @@ try {
   await page.getByRole('button', {name: '关闭', exact: true}).click();
   assert.equal(await readFile(configPath, 'utf8'), beforePreferences);
   await page.getByRole('button', {name: '插件', exact: true}).click();
-  await page.getByRole('switch', {name: '启用 @deepseekharness-plugin/dsh-model-efforts', exact: true}).click();
+  await page.locator('[data-plugin-package="@deepseekharness-plugin/dsh-model-efforts"]').getByRole('switch').click();
   await page.getByText('新会话', {exact: true}).first().click();
   await page.getByRole('button', {name: /^选择模型/}).click();
   await page.getByRole('menuitem', {name: /推理等级/}).click();
